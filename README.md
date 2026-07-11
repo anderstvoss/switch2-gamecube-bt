@@ -7,6 +7,10 @@ secret and artifact blockers, Rust lint/test gates, supply-chain checks,
 CodeQL, OpenSSF Scorecard, SBOM generation, Dependabot, issue/PR templates, and
 security reporting documentation.
 
+## AI Usage Disclosure
+
+This project was authored with extensive use of LLM/Coding Agents.
+
 ## Local Setup
 
 Install the local tooling once per machine. Install `uv` using the official
