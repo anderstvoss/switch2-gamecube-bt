@@ -1,6 +1,9 @@
 //! Portable contracts for Switch 2 controller discovery, transport, decoding,
 //! and output.
 
+pub mod application;
+pub mod backend;
+pub mod cli;
 pub mod domain;
 pub mod protocol;
 
