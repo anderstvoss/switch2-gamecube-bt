@@ -10,23 +10,25 @@ workflow.
 ## One-time setup
 
 ```bash
-# 1. Install pre-commit system-wide
-pipx install pre-commit          # preferred
-# or: pip install --user pre-commit
+# 1. Install uv using the official installation method for your platform
+#    (https://docs.astral.sh/uv/getting-started/installation/)
 
-# 2. Install the Cargo security tools
+# 2. Install pre-commit as a uv-managed tool
+uv tool install pre-commit
+
+# 3. Install the Cargo security tools
 cargo install cargo-deny cargo-audit
 
-# 3. Point Git at the committed hook wrappers
+# 4. Point Git at the committed hook wrappers
 git config core.hooksPath .githooks
 
-# 4. Remove any stale wrappers left over from a prior `pre-commit install`
+# 5. Remove any stale wrappers left over from a prior `pre-commit install`
 rm -f .git/hooks/pre-commit .git/hooks/pre-push
 ```
 
 The committed wrappers in `.githooks/` call whichever `pre-commit` is on
-`PATH`, so you never need to re-run `pre-commit install` after a rebase or
-re-clone.
+`PATH`, including the executable managed by `uv tool install`, so you never
+need to re-run `pre-commit install` after a rebase or re-clone.
 
 ### Verify the setup
 

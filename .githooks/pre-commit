@@ -6,7 +6,7 @@
 set -eu
 
 if ! command -v pre-commit >/dev/null 2>&1; then
-  echo 'ERROR: `pre-commit` not found. Install via pipx or pip (https://pre-commit.com/#install).' >&2
+  echo 'ERROR: `pre-commit` not found. Install uv, then run `uv tool install pre-commit`.' >&2
   exit 1
 fi
 
