@@ -9,12 +9,13 @@ security reporting documentation.
 
 ## Local Setup
 
-Install the local tooling once per machine:
+Install the local tooling once per machine. Install `uv` using the official
+installation method for your platform, then use it to install `pre-commit`:
 
 Install gitleaks separately and make it available on `PATH`.
 
 ```bash
-pipx install pre-commit
+uv tool install pre-commit
 cargo install cargo-deny cargo-audit
 git config core.hooksPath .githooks
 ```

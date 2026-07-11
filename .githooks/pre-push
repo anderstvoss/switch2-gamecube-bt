@@ -35,7 +35,7 @@ echo "Custom pre-push checks passed; handing off to pre-commit pre-push hooks...
 # Run pre-commit pre-push-stage hooks (cargo-deny, cargo-audit, etc.).
 # Stdin is preserved by exec so pre-commit receives git's ref info.
 if ! command -v pre-commit >/dev/null 2>&1; then
-  echo 'ERROR: `pre-commit` not found; cannot run pre-push-stage hooks. Install via pipx or pip.' >&2
+  echo 'ERROR: `pre-commit` not found; install uv, then run `uv tool install pre-commit`.' >&2
   exit 1
 fi
 
