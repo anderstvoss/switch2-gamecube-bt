@@ -6,10 +6,11 @@
 connecting to, inspecting, and eventually exposing Nintendo Switch 2
 controllers as usable GameCube-style input devices over Bluetooth.
 
-The project begins with a Windows host and WSL2 development environment. The
-first implementation target is a reliable command-line diagnostic and pairing
-workflow. A graphical interface and input translation are built on top of the
-same library after the Bluetooth and HID behavior is understood.
+The project begins with a native Windows 11 host and an optional WSL2 comparison
+environment. The first implementation target is a reliable native Windows
+command-line diagnostic and pairing workflow. A background service, virtual
+gamepad, and graphical interface are built on the same library after Bluetooth
+and HID behavior is understood.
 
 This document is the development contract. It records the intended behavior,
 boundaries, unknowns, and completion criteria. Hardware observations must be
@@ -30,8 +31,9 @@ The current working assumptions are:
 - WSL2 is suitable for Linux-side development and protocol inspection, but
   direct access to a host Bluetooth adapter may require a USB adapter and
   explicit device passthrough.
-- Linux is the best initial environment for low-level observation because
-  BlueZ, `hidraw`, `evdev`, and `uinput` expose useful layers independently.
+- Linux remains a useful comparison environment because BlueZ, `hidraw`,
+  `evdev`, and `uinput` expose useful layers independently, but it follows the
+  native Windows baseline.
 - A controller may pair successfully without producing usable input reports;
   the tool must distinguish those states.
 - Switch 2-specific report formats, authentication, firmware behavior, and
@@ -227,13 +229,14 @@ length or button layout is stable without fixtures or hardware evidence.
 
 | Platform | First responsibility | Expected constraints |
 | --- | --- | --- |
-| Linux in WSL2 | BlueZ discovery, pairing, HID inspection, fixtures | Bluetooth adapter passthrough and permissions may be required |
-| Native Windows | Bluetooth pairing and HID connection | Native APIs are required for dependable host integration; WSL2 is not the production backend |
+| Native Windows | USB baseline, Bluetooth pairing, HID connection, virtual output | Native APIs and a separately test-signed virtual HID driver are required |
+| Linux in WSL2 | BlueZ comparison, HID inspection, fixtures | Bluetooth adapter passthrough and permissions may be required |
 | macOS | Discovery, pairing, HID inspection | API and entitlement behavior must be validated on supported macOS versions |
 
-Development starts with WSL2 for repeatable Linux-side inspection and native
-Windows probes for host behavior. A USB Bluetooth adapter dedicated to WSL2
-is preferred for experiments so the Windows host adapter is not disrupted.
+Development starts with a read-only USB baseline and native Windows Bluetooth
+probes. WSL2 follows as a comparison backend after the shared contracts and
+Windows behavior stabilize. A USB Bluetooth adapter dedicated to WSL2 is
+preferred for later experiments so the Windows host adapter is not disrupted.
 
 The first platform milestone is not “all platforms work.” It is a shared
 contract with one tested backend and honest capability reporting on the others.
@@ -249,8 +252,8 @@ contract with one tested backend and honest capability reporting on the others.
   machine identifiers or raw credentials.
 - Test original Switch controllers as a protocol comparison where available.
 
-Exit criteria: a contributor can reproduce discovery and collect a sanitized
-diagnostic session on the reference Linux setup.
+Exit criteria: a contributor can record a sanitized native Windows observation
+without committing raw device data.
 
 ### Phase 1: Domain and fake backend
 
@@ -262,24 +265,25 @@ diagnostic session on the reference Linux setup.
 Exit criteria: state transitions, error mapping, and CLI-facing contracts are
 covered without hardware.
 
-### Phase 2: Linux CLI prototype
+### Phase 2: Native Windows CLI prototype
 
-- Implement BlueZ-backed discovery and pairing operations.
-- Add HID endpoint verification and bounded report observation.
+- Establish the read-only USB baseline, then implement Windows discovery and
+  pairing operations.
+- Add Windows HID endpoint verification and bounded report observation.
 - Ship `adapters`, `scan`, `pair`, `connect`, `disconnect`, `info`, and
   `diagnose` in human and JSON modes.
 
 Exit criteria: a known controller can be discovered, paired, connected, and
 classified as HID-ready or not, with a useful diagnostic on failure.
 
-### Phase 3: Windows backend
+### Phase 3: Windows virtual output and service
 
-- Implement native Windows Bluetooth discovery and pairing.
-- Implement native HID enumeration and input-readiness checks.
-- Reuse the domain, application, diagnostics, and CLI layers.
+- Add a minimal KMDF/VHF virtual HID driver behind a versioned bridge.
+- Add automatic reconnect through a Rust background service.
+- Keep controller-specific and Bluetooth logic out of kernel mode.
 
-Exit criteria: Windows can complete the same acceptance workflow for every
-controller model claimed in the support matrix.
+Exit criteria: Windows games see a controller without a foreground diagnostic
+application, and all shutdown paths neutralize stale input.
 
 ### Phase 4: macOS backend
 
@@ -378,7 +382,7 @@ The first usable release is complete when:
 1. The CLI builds under the pinned Rust toolchain.
 2. Fake-backend tests cover the full pairing state machine and expected error
    paths.
-3. One reference Linux setup can discover and pair a verified controller.
+3. One reference Windows 11 setup can discover and pair a verified controller.
 4. The tool distinguishes Bluetooth connection from HID readiness.
 5. A failed operation produces a bounded, sanitized diagnostic bundle.
 6. JSON output is stable enough for a future GUI client.
@@ -410,9 +414,8 @@ remain marked as such in the support matrix.
 
 1. Add the domain types and fake backend.
 2. Add the versioned JSON event and diagnostic schemas.
-3. Choose and document the Linux Bluetooth crate/API boundary after checking
-   current dependency policy.
-4. Build a read-only adapter and device inventory command.
+3. Choose and document the Windows Bluetooth and HID API boundaries.
+4. Build read-only USB, adapter, and device inventory commands.
 5. Add the first sanitized HID fixture and hardware observation entry.
 6. Implement pairing as a cancellable application workflow.
 7. Run the repository's pre-commit and pre-push checks after each milestone.
