@@ -60,6 +60,8 @@ open a device handle or expose any write/output operation:
 
 ```powershell
 cargo run --bin s2bt -- --json usb-inventory
+cargo run --bin s2bt -- --json usb-descriptor
+cargo run --bin s2bt -- --json usb-observe --seconds 10 --limit 256
 ```
 
 ## Security

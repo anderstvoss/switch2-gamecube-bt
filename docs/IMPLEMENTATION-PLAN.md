@@ -54,6 +54,14 @@ BEE-021 decoder exclusively from repeatable evidence.
 Exit gate: every verified wired input has a sanitized fixture and deterministic
 decoder test. Unknown and output reports remain disabled.
 
+Current evidence: Windows exposes BEE-021 HID metadata and its report
+descriptor, but passive HID input remains silent. Before live report capture,
+model and review the libusb bulk initialization used by SDL3, classify every
+operation by persistence risk, reject unknown commands, and request approval
+before the first live initialization attempt. Use recent Steam Input as a
+black-box wired behavior reference while treating SDL3's public libusb driver as
+the auditable implementation reference. See Decision 0001.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting

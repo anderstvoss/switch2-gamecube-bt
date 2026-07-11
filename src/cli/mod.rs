@@ -85,6 +85,19 @@ pub enum Command {
     /// Enumerate BEE-021 USB HID metadata without opening the device.
     #[cfg(windows)]
     UsbInventory,
+    /// Fingerprint the BEE-021 HID descriptor without exposing its bytes.
+    #[cfg(windows)]
+    UsbDescriptor,
+    /// Observe bounded BEE-021 input report metadata without exposing bytes.
+    #[cfg(windows)]
+    UsbObserve {
+        /// Observation duration in seconds.
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=60))]
+        seconds: u64,
+        /// Maximum number of reports to aggregate.
+        #[arg(long, default_value_t = 256, value_parser = parse_limit)]
+        limit: usize,
+    },
 }
 
 /// Runs the CLI against the deterministic backend.
@@ -92,7 +105,9 @@ pub enum Command {
 pub fn run(args: Args) -> CliResult {
     let backend_name = match args.command {
         #[cfg(windows)]
-        Command::UsbInventory => "windows_usb_read_only",
+        Command::UsbInventory | Command::UsbDescriptor | Command::UsbObserve { .. } => {
+            "windows_usb_read_only"
+        }
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -166,6 +181,15 @@ enum Payload {
     UsbInterfaces {
         items: Vec<UsbInterfaceView>,
     },
+    #[cfg(windows)]
+    UsbDescriptor {
+        length: usize,
+        sha256: String,
+    },
+    #[cfg(windows)]
+    UsbInputMetadata {
+        items: Vec<UsbInputMetadataView>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -206,6 +230,14 @@ struct UsbInterfaceView {
     product_label: Option<String>,
     manufacturer_label: Option<String>,
     bus_type: &'static str,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
+struct UsbInputMetadataView {
+    report_id: String,
+    length: usize,
+    count: usize,
 }
 
 fn execute(
@@ -276,6 +308,33 @@ fn execute(
                 product_label: interface.product_label,
                 manufacturer_label: interface.manufacturer_label,
                 bus_type: interface.bus_type,
+            })
+            .collect(),
+        }),
+        #[cfg(windows)]
+        Command::UsbDescriptor => {
+            let descriptor = crate::platform::windows::inspect_usb_descriptor(
+                NINTENDO_VENDOR_ID,
+                BEE_021_USB_PRODUCT_ID,
+            )?;
+            Ok(Payload::UsbDescriptor {
+                length: descriptor.length,
+                sha256: descriptor.sha256,
+            })
+        }
+        #[cfg(windows)]
+        Command::UsbObserve { seconds, limit } => Ok(Payload::UsbInputMetadata {
+            items: crate::platform::windows::observe_usb_input(
+                NINTENDO_VENDOR_ID,
+                BEE_021_USB_PRODUCT_ID,
+                Duration::from_secs(seconds),
+                limit,
+            )?
+            .into_iter()
+            .map(|observation| UsbInputMetadataView {
+                report_id: format!("{:02x}", observation.report_id),
+                length: observation.length,
+                count: observation.count,
             })
             .collect(),
         }),
@@ -418,6 +477,20 @@ fn render_human(payload: Payload) -> String {
                     item.usage,
                     item.interface_number,
                     item.bus_type
+                );
+            }
+        }
+        #[cfg(windows)]
+        Payload::UsbDescriptor { length, sha256 } => {
+            let _ = writeln!(output, "descriptor: {length} bytes sha256={sha256}");
+        }
+        #[cfg(windows)]
+        Payload::UsbInputMetadata { items } => {
+            for item in items {
+                let _ = writeln!(
+                    output,
+                    "report 0x{}: {} bytes, {} observed",
+                    item.report_id, item.length, item.count
                 );
             }
         }
