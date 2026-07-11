@@ -59,7 +59,7 @@ jobs:
         # actual cargo invocations honour rust-toolchain.toml at the
         # repo root via rustup, so the pinned channel still drives
         # what runs.
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
         with:
           toolchain: stable
           components: rustfmt, clippy
@@ -128,7 +128,7 @@ jobs:
           echo "MSRV: $MSRV"
 
       - name: Install Rust at MSRV
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
         with:
           toolchain: ${{ steps.msrv.outputs.msrv }}
 
@@ -177,7 +177,7 @@ jobs:
 
       - name: Install Rust
         # See rust-lint job's Install Rust step for rationale.
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
         with:
           toolchain: stable
 
@@ -286,7 +286,7 @@ jobs:
 
       - name: Install Rust
         # See rust-lint job's Install Rust step for rationale.
-        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
         with:
           toolchain: stable
 
