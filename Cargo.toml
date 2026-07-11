@@ -19,6 +19,7 @@ serde_json = "1.0.140"
 
 [target.'cfg(windows)'.dependencies]
 hidapi = { version = "2.6.6", default-features = false, features = ["windows-native"] }
+sha2 = "0.10.9"
 
 [lib]
 path = "src/lib.rs"
