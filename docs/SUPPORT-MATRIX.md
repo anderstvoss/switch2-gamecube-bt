@@ -23,7 +23,7 @@ earlier one.
 
 | Platform | Environment | Connection | Adapter label | Controller model | Operation | State | Confidence | Evidence reference | Date | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Windows 11 | Native host | USB | n/a | BEE-021 | inventory | unverified | unverified | `<sanitized fixture>` | `<YYYY-MM-DD>` | Read-only baseline. |
+| Windows 11 | Native host | USB | n/a | BEE-021 | inventory | discovered | observed once | `observations/2026-07-11-windows-usb-inventory.md` | 2026-07-11 | Read-only HID metadata only. |
 | Windows 11 | Native host | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |
 | WSL2 | `<distribution>` | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |
 | Linux | Native host | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |
