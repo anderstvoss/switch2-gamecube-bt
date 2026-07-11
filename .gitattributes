@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# Git hooks and shell helpers must remain LF-terminated on Windows.
+.githooks/* text eol=lf
+scripts/*.sh text eol=lf
