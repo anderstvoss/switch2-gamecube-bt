@@ -54,6 +54,14 @@ cargo run --bin s2bt -- --json scan
 cargo run --bin s2bt -- pair fake-bee-021
 ```
 
+On Windows, the read-only USB inventory command is the first real hardware
+backend. It lists sanitized HID metadata for the BEE-021 controller and does not
+open a device handle or expose any write/output operation:
+
+```powershell
+cargo run --bin s2bt -- --json usb-inventory
+```
+
 ## Security
 
 Please do not open public issues for vulnerabilities. Use GitHub private

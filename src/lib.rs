@@ -5,6 +5,7 @@ pub mod application;
 pub mod backend;
 pub mod cli;
 pub mod domain;
+pub mod platform;
 pub mod protocol;
 
 /// Returns the project identifier used in logs and diagnostics.

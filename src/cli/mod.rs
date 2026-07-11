@@ -14,6 +14,10 @@ use crate::{
 
 const JSON_SCHEMA_VERSION: u16 = 1;
 const MAX_LIMIT: usize = 256;
+#[cfg(windows)]
+const NINTENDO_VENDOR_ID: u16 = 0x057e;
+#[cfg(windows)]
+const BEE_021_USB_PRODUCT_ID: u16 = 0x2073;
 
 /// Command-line arguments for `s2bt`.
 #[derive(Debug, Parser)]
@@ -78,21 +82,29 @@ pub enum Command {
         /// Opaque controller identifier returned by scan.
         controller: String,
     },
+    /// Enumerate BEE-021 USB HID metadata without opening the device.
+    #[cfg(windows)]
+    UsbInventory,
 }
 
 /// Runs the CLI against the deterministic backend.
 #[must_use]
 pub fn run(args: Args) -> CliResult {
+    let backend_name = match args.command {
+        #[cfg(windows)]
+        Command::UsbInventory => "windows_usb_read_only",
+        _ => "fake",
+    };
     let mut service = ControllerService::new(FakeBackend::default())
         .with_timeout(Duration::from_secs(args.timeout));
     match execute(&mut service, args.command) {
         Ok(payload) => CliResult {
             exit_code: 0,
-            output: render_success(args.json, payload),
+            output: render_success(args.json, backend_name, payload),
         },
         Err(error) => CliResult {
             exit_code: exit_code(error.category()),
-            output: render_error(args.json, &error),
+            output: render_error(args.json, backend_name, &error),
         },
     }
 }
@@ -150,6 +162,10 @@ enum Payload {
         controller: ControllerView,
         privacy: &'static str,
     },
+    #[cfg(windows)]
+    UsbInterfaces {
+        items: Vec<UsbInterfaceView>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -177,6 +193,19 @@ struct InputView {
     axes: Vec<(String, i16)>,
     motion_samples: usize,
     battery_percent: Option<u8>,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
+struct UsbInterfaceView {
+    vendor_id: String,
+    product_id: String,
+    usage_page: String,
+    usage: String,
+    interface_number: i32,
+    product_label: Option<String>,
+    manufacturer_label: Option<String>,
+    bus_type: &'static str,
 }
 
 fn execute(
@@ -230,6 +259,25 @@ fn execute(
         Command::Diagnose { controller } => Ok(Payload::Diagnostic {
             controller: controller_view(service.info(&parse_id(controller)?)?),
             privacy: "sanitized",
+        }),
+        #[cfg(windows)]
+        Command::UsbInventory => Ok(Payload::UsbInterfaces {
+            items: crate::platform::windows::enumerate_usb_hid(
+                NINTENDO_VENDOR_ID,
+                Some(BEE_021_USB_PRODUCT_ID),
+            )?
+            .into_iter()
+            .map(|interface| UsbInterfaceView {
+                vendor_id: format!("{:04x}", interface.vendor_id),
+                product_id: format!("{:04x}", interface.product_id),
+                usage_page: format!("{:04x}", interface.usage_page),
+                usage: format!("{:04x}", interface.usage),
+                interface_number: interface.interface_number,
+                product_label: interface.product_label,
+                manufacturer_label: interface.manufacturer_label,
+                bus_type: interface.bus_type,
+            })
+            .collect(),
         }),
     }
 }
@@ -291,11 +339,11 @@ fn input_view(frame: InputFrame) -> InputView {
     }
 }
 
-fn render_success(json: bool, payload: Payload) -> String {
+fn render_success(json: bool, backend: &'static str, payload: Payload) -> String {
     if json {
         return serde_json::to_string_pretty(&JsonEnvelope {
             schema_version: JSON_SCHEMA_VERSION,
-            backend: "fake",
+            backend,
             status: "ok",
             data: payload,
         })
@@ -354,15 +402,34 @@ fn render_human(payload: Payload) -> String {
                 );
             }
         }
+        #[cfg(windows)]
+        Payload::UsbInterfaces { items } => {
+            for item in items {
+                let label = item
+                    .product_label
+                    .as_deref()
+                    .unwrap_or("unlabeled HID interface");
+                let _ = writeln!(
+                    output,
+                    "{label}: {:04}:{:04} usage={}:{} interface={} bus={}",
+                    item.vendor_id,
+                    item.product_id,
+                    item.usage_page,
+                    item.usage,
+                    item.interface_number,
+                    item.bus_type
+                );
+            }
+        }
     }
     output
 }
 
-fn render_error(json: bool, error: &UserSafeError) -> String {
+fn render_error(json: bool, backend: &'static str, error: &UserSafeError) -> String {
     if json {
         return serde_json::to_string_pretty(&JsonEnvelope {
             schema_version: JSON_SCHEMA_VERSION,
-            backend: "fake",
+            backend,
             status: "error",
             data: serde_json::json!({
                 "category": format!("{:?}", error.category()),
