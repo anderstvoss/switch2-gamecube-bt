@@ -1,0 +1,10 @@
+* @anderstvoss
+
+/.github/                @anderstvoss
+/.pre-commit-config.yaml @anderstvoss
+/SECURITY.md             @anderstvoss
+/Cargo.toml              @anderstvoss
+/Cargo.lock              @anderstvoss
+/deny.toml               @anderstvoss
+/.gitignore              @anderstvoss
+/LICENSE                 @anderstvoss

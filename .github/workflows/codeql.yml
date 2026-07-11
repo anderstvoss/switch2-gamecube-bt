@@ -1,0 +1,99 @@
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, offset from gitleaks-history.yml so they don't queue
+    # together.
+    - cron: "41 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    # GitHub-native code scanning is free on public repos and gated on
+    # Advanced Security on private; gate accordingly like the rest of
+    # the remote-CI surface.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [rust]
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          # CodeQL pulls bundle + database from a wider set of GitHub
+          # CDN endpoints than the standard rust-toolchain flow, so
+          # this allowlist is slightly broader than ci.yml's.
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            uploads.github.com:443
+            static.rust-lang.org:443
+            static.crates.io:443
+            index.crates.io:443
+            crates.io:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            release-assets.githubusercontent.com:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        # The SHA-pinned dtolnay/rust-toolchain at this revision
+        # requires an explicit toolchain input. `stable` here is a
+        # baseline; rust-toolchain.toml at the repo root drives the
+        # actual cargo invocations via rustup.
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: codeql-${{ matrix.language }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@bc0b696b4103f5fe60f15749af68a046868d511a # codeql-bundle-v2.25.4
+        with:
+          languages: ${{ matrix.language }}
+          # security-extended adds higher-severity, lower-noise queries
+          # on top of the default suite.
+          queries: security-extended
+
+      - name: Build (manual)
+        # Rust needs an explicit build for CodeQL to observe the
+        # compilation. cargo build (debug) is enough; the dev profile
+        # keeps the run fast.
+        run: cargo build --all-targets --all-features
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@bc0b696b4103f5fe60f15749af68a046868d511a # codeql-bundle-v2.25.4
+        with:
+          category: "/language:${{ matrix.language }}"

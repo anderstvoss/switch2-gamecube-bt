@@ -1,0 +1,14 @@
+# Active development + CI toolchain.
+#
+# Distinct from Cargo.toml's [package].rust-version, which declares
+# the MSRV (the minimum we promise to support). This file pins the
+# *current* toolchain so local builds, pre-commit hooks, and CI all
+# resolve to the same rustc/clippy/rustfmt version — important
+# because clippy::pedantic findings shift between versions.
+#
+# Bump in lock-step with a clippy sweep; do not bump silently.
+
+[toolchain]
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

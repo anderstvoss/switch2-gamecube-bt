@@ -1,0 +1,56 @@
+name: Gitleaks (full history)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: gitleaks-history-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Gitleaks (full history)
+    # Gated on public visibility along with the other remote-CI jobs;
+    # while private, scripts/deep-scan.sh covers the same surface
+    # locally. Auto-activates on public flip.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Bring every branch and tag into the local clone so the
+      # subsequent `--log-opts=--all` scan reaches them. Without this,
+      # `actions/checkout` only materialises the triggering ref's
+      # history.
+      - name: Fetch all refs
+        run: |
+          git fetch --no-tags --prune origin \
+            '+refs/heads/*:refs/remotes/origin/*' \
+            '+refs/tags/*:refs/tags/*'
+
+      # Main-history scan via the official action (SHA-pinned install).
+      - name: Gitleaks (main history)
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Deep scan: same gitleaks binary now on PATH, called directly
+      # with `--log-opts=--all` to walk every commit reachable from any
+      # branch or tag. Closes the gap where un-merged side branches
+      # could carry secrets that the main-only scan would miss.
+      - name: Gitleaks (all refs)
+        run: gitleaks detect --no-banner --log-opts='--all'

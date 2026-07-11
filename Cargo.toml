@@ -1,0 +1,24 @@
+[package]
+name = "switch2-gamecube-bt"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+authors = ["Anders Voss"]
+license = "AGPL-3.0-only"
+description = "Hardened Rust workspace for Switch 2 GameCube Bluetooth experiments."
+repository = "https://github.com/anderstvoss/switch2-gamecube-bt"
+readme = "README.md"
+keywords = ["bluetooth", "gamecube", "switch", "controller"]
+categories = ["hardware-support"]
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

@@ -1,0 +1,123 @@
+minimum_pre_commit_version: "3.5.0"
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks-system
+        name: Detect hardcoded secrets
+        entry: gitleaks git --pre-commit --redact --staged --verbose
+        language: system
+        pass_filenames: false
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: end-of-file-fixer
+        exclude: '^(\.github/dependabot\.yml|README\.md|SECURITY\.md)$'
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-illegal-windows-names
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: detect-private-key
+        exclude: '^\.pre-commit-config\.yaml$'
+
+  - repo: local
+    hooks:
+      - id: block-env-files
+        name: block real environment files
+        entry: Do not commit real environment files. Commit .env.example only.
+        language: fail
+        files: '(^|/)\.env($|\.)'
+        exclude: '(^|/)\.env\.example$'
+
+      - id: block-private-key-files
+        name: block private key files
+        entry: Do not commit private keys, certificates, or credential files.
+        language: fail
+        files: '(^|/)[^/]*(id_rsa|id_ed25519|id_ecdsa|id_dsa|\.pem|\.key|\.p12|credentials?|secrets?)[^/]*$'
+
+      - id: block-logs
+        name: block logs
+        entry: Do not commit logs or debug dumps.
+        language: fail
+        files: '(^|/).*\.(log|dump|trace)$'
+
+      - id: block-local-paths
+        name: block local machine paths
+        language: pygrep
+        types: [text]
+        entry: '(/Users/|/home/[^/]+/|/mnt/[A-Za-z]/Users/|[A-Za-z]:\\Users\\|[A-Za-z]:/Users/|\\\\[^\\/]+\\[^\\/]+)'
+        exclude: '^(\.pre-commit-config\.yaml|\.githooks/pre-push)$'
+
+      - id: block-ssh-hosts
+        name: block ssh config and known hosts content
+        language: pygrep
+        types: [text]
+        entry: '(\bHostName\s+\S+|\bIdentityFile\s+|BEGIN OPENSSH PRIVATE KEY|github_pat_|gh[pousr]_[A-Za-z0-9_]+)'
+        exclude: '^\.pre-commit-config\.yaml$'
+
+      - id: block-cloud-uris
+        name: block private storage URIs
+        language: pygrep
+        types: [text]
+        entry: '(s3://[A-Za-z0-9._-]+|gs://[A-Za-z0-9._-]+|gcs://[A-Za-z0-9._-]+|azure://[A-Za-z0-9._/-]+|wasbs?://[A-Za-z0-9._/-]+|abfss?://[A-Za-z0-9._/-]+|oss://[A-Za-z0-9._/-]+)'
+        exclude: '^\.pre-commit-config\.yaml$'
+
+      - id: block-local-network-targets
+        name: block private IPs and localhost endpoints
+        language: pygrep
+        types: [text]
+        entry: '(\b(localhost|host\.docker\.internal|0\.0\.0\.0|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})\b|(?<![:\w])::1(?![:\w]))'
+        exclude: '^\.pre-commit-config\.yaml$'
+
+      - id: block-binary-artifacts
+        name: block local binary artifacts
+        entry: Do not commit local archives, databases, or binary dumps.
+        language: fail
+        files: '(^|/).*\.(sqlite|db|tar|gz|zip|7z|rar|bin|exe|dll|so|dylib)$'
+
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+
+      - id: cargo-check
+        name: cargo check
+        entry: cargo check --all-targets --all-features
+        language: system
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test --all-features
+        language: system
+        pass_filenames: false
+
+      - id: cargo-deny
+        name: cargo deny
+        entry: cargo deny check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-audit
+        name: cargo audit
+        entry: cargo audit
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

@@ -1,0 +1,344 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-lint:
+    name: Rust lint
+    # All remote-CI jobs are gated on the repo being public.
+    # While private, rely on the local pre-commit / pre-push hooks for
+    # the same gates (cargo fmt, clippy, check, test, deny, audit,
+    # gitleaks). Skipping at job level costs zero runner time and the
+    # jobs auto-activate the moment the repo flips to public.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            uploads.github.com:443
+            static.rust-lang.org:443
+            static.crates.io:443
+            index.crates.io:443
+            crates.io:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        # The SHA-pinned dtolnay/rust-toolchain at this revision
+        # requires an explicit toolchain input — it does not fall back
+        # to reading rust-toolchain.toml. `stable` is a baseline; the
+        # actual cargo invocations honour rust-toolchain.toml at the
+        # repo root via rustup, so the pinned channel still drives
+        # what runs.
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  msrv:
+    name: MSRV (cargo check on rust-version)
+    # Verifies the crate still builds on the rust-version declared in
+    # Cargo.toml — catches accidental MSRV breakage on dep updates.
+    # Uses an explicit `with: toolchain: …` input to override the
+    # rust-toolchain.toml pin for this one job.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            uploads.github.com:443
+            static.rust-lang.org:443
+            static.crates.io:443
+            index.crates.io:443
+            crates.io:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Read MSRV from Cargo.toml
+        id: msrv
+        run: |
+          MSRV=$(
+            awk -F'"' '
+              $0 == "[workspace.package]" { in_workspace = 1; next }
+              /^\[/ && $0 != "[workspace.package]" { in_workspace = 0 }
+              in_workspace && $1 ~ /^rust-version[[:space:]]*=[[:space:]]*$/ { print $2; exit }
+            ' Cargo.toml
+          )
+          if [ -z "$MSRV" ]; then
+            MSRV=$(grep -m1 '^rust-version = "' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+          fi
+          if [ -z "$MSRV" ]; then
+            echo "ERROR: could not parse rust-version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "msrv=$MSRV" >> "$GITHUB_OUTPUT"
+          echo "MSRV: $MSRV"
+
+      - name: Install Rust at MSRV
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: ${{ steps.msrv.outputs.msrv }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: msrv-${{ steps.msrv.outputs.msrv }}
+
+      - name: cargo check at MSRV
+        run: cargo check --workspace --all-targets --all-features
+
+  rust-test:
+    name: Rust build and test (${{ matrix.os }})
+    if: ${{ !github.event.repository.private }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Harden runner
+        if: runner.os == 'Linux'
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            uploads.github.com:443
+            static.rust-lang.org:443
+            static.crates.io:443
+            index.crates.io:443
+            crates.io:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        # See rust-lint job's Install Rust step for rationale.
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Check build
+        run: cargo check --workspace --all-targets --all-features
+
+      - name: Test
+        run: cargo test --workspace --all-features
+
+  policy:
+    name: Policy checks (${{ matrix.os }})
+    if: ${{ !github.event.repository.private }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      # cargo-* hooks are covered by the rust-lint / rust-test jobs.
+      # The local gitleaks-system hook requires a preinstalled binary.
+      # Skip it here — gitleaks-history.yml runs a
+      # dedicated full-history gitleaks scan on the same triggers,
+      # which is the authoritative coverage.
+      SKIP: cargo-fmt,cargo-check,cargo-clippy,cargo-test,gitleaks-system
+
+    steps:
+      - name: Harden runner
+        if: runner.os == 'Linux'
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            uploads.github.com:443
+            static.rust-lang.org:443
+            static.crates.io:443
+            index.crates.io:443
+            crates.io:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            pypi.org:443
+            files.pythonhosted.org:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.x"
+
+      - name: Install pre-commit (hash-locked)
+        # All deps and their transitive deps pinned to specific versions
+        # and sha256 hashes in .github/requirements/pre-commit.txt
+        # (generated by `uv pip compile --generate-hashes`). Satisfies
+        # OpenSSF Scorecard's Pinned-Dependencies check for pip.
+        # Regenerate by editing .github/requirements/pre-commit.in and
+        # re-running uv pip compile.
+        run: python -m pip install --require-hashes --no-deps -r .github/requirements/pre-commit.txt
+
+      - name: Run policy hooks
+        env:
+          PRE_COMMIT_HOME: ${{ runner.temp }}/pre-commit-cache
+        run: python -m pre_commit run --all-files --show-diff-on-failure --color=always
+
+  supply-chain:
+    name: Supply chain audit
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            uploads.github.com:443
+            static.rust-lang.org:443
+            static.crates.io:443
+            index.crates.io:443
+            crates.io:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        # See rust-lint job's Install Rust step for rationale.
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9
+        with:
+          toolchain: stable
+
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@a531616d8ce3b9177443e48a1159bc945a099823 # v2.0.19
+        with:
+          command: check
+
+      - name: cargo-audit
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: Dependency review
+    if: ${{ github.event_name == 'pull_request' && !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          # actions/dependency-review-action fetches the dependency
+          # compare from api.github.com, license/advisory lookups via
+          # the same host, and action assets from
+          # objects.githubusercontent.com (plus blob/CDN fallbacks).
+          # It also calls api.deps.dev for dependency metadata and
+          # api.securityscorecards.dev for OSSF Scorecard scoring on
+          # each package (see src/scorecard.ts in the action). Both
+          # are required or the action fails with a generic
+          # "fetch failed".
+          egress-policy: block
+          allowed-endpoints: >
+            api.deps.dev:443
+            api.github.com:443
+            api.securityscorecards.dev:443
+            github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            raw.githubusercontent.com:443
+            uploads.github.com:443
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Dependency review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure

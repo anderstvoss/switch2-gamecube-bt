@@ -1,0 +1,56 @@
+# Rust build artifacts
+target/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Agent and harness files
+.claude/
+.codex/
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+*.crt
+secrets.*
+credentials.*
+config.local.*
+local.*
+private.*
+id_rsa*
+id_ed25519*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Local notes / scratch / private context
+notes/
+scratch/
+todo-private.md
+private/
+.local/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Coverage/profiling
+tarpaulin-report.html
+coverage/
+*.profraw
+*.profdata
+
+# Generated artifacts
+dist/
+build/
+out/
+/bom.json

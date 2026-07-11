@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# pre-commit hook wrapper, committed alongside .githooks/pre-push so
+# `core.hooksPath = .githooks` works without a separate `pre-commit
+# install` step. (pre-commit install refuses when core.hooksPath is
+# already set, so committing the wrapper avoids the chicken-and-egg.)
+set -eu
+
+if ! command -v pre-commit >/dev/null 2>&1; then
+  echo 'ERROR: `pre-commit` not found. Install via pipx or pip (https://pre-commit.com/#install).' >&2
+  exit 1
+fi
+
+exec pre-commit hook-impl \
+  --config=.pre-commit-config.yaml \
+  --hook-type=pre-commit \
+  --hook-dir "$(cd "$(dirname "$0")" && pwd)" \
+  -- "$@"
