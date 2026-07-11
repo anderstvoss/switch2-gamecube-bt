@@ -1,258 +1,134 @@
 # Switch 2 GameCube Bluetooth Implementation Plan
 
-This plan turns [DEVELOPMENT-SPEC.md](DEVELOPMENT-SPEC.md) into an ordered
-series of small, reviewable changes. The first usable outcome is a Linux/WSL2
-CLI that can discover, pair, connect, and diagnose a controller. Windows and
-macOS backends follow the shared contracts instead of creating separate
-application flows.
+This roadmap builds native Windows 11 support for the official Switch 2
+GameCube controller (BEE-021) first. Protocol, decoding, and application
+contracts remain platform-neutral so Linux backends and other Switch 2
+controllers can be added without changing the Windows-facing workflow.
 
-## Working Rules
+## Working rules
 
 - Keep production Rust compatible with `unsafe_code = "forbid"`.
-- Land one vertical slice at a time: domain contract, fake behavior, platform
-  behavior, user-facing command, and tests.
-- Keep Bluetooth hardware tests opt-in; deterministic tests remain the default.
-- Record hardware observations as sanitized fixtures and support-matrix data.
-- Do not add a dependency until its API boundary and policy impact are clear.
-- Preserve the existing repository hardening checks on every change.
+- Never write controller firmware, bootloader state, calibration, pairing
+  secrets, or undocumented persistent controller storage.
+- Keep Bluetooth and USB hardware tests opt-in and user supervised.
+- Store only sanitized evidence; never commit addresses, serial numbers, raw
+  captures, logs, generated drivers, credentials, or local machine paths.
+- Land small commits only after the relevant deterministic checks pass.
+- Pause for user confirmation at every hardware checkpoint below.
 
-## Milestone 0: Development Lab
+## Ordered goals
 
-Goal: make hardware observations reproducible from the Windows host and WSL2.
+### Goal 0: Windows lab and evidence workflow
 
-Tasks:
+Document the native Windows lab, preserve the WSL2 comparison lab, and track
+support claims by connection type, reached state, and evidence confidence.
 
-1. Document the WSL2 distribution, Rust toolchain, required Linux packages,
-   Bluetooth service expectations, and USB adapter passthrough procedure.
-2. Add a hardware observation template containing platform, adapter,
-   controller model, firmware visibility, operation, result, and evidence.
-3. Add a support matrix with `unverified`, `discovered`, `paired`,
-   `connected`, and `input verified` states.
-4. Test an original Switch controller as a comparison device if available.
-
-Deliverables:
-
-- WSL2 setup notes in `docs/WSL2-LAB.md`.
-- Sanitized support matrix in `docs/SUPPORT-MATRIX.md`.
-- No raw addresses, credentials, logs, or machine-specific paths committed.
-
-Exit gate: a contributor can repeat discovery and record an observation
+Exit gate: another contributor can record a sanitized Windows observation
 without changing application code.
 
-## Milestone 1: Domain Contracts
+### Goal 1: Portable domain and protocol contracts
 
-Goal: define the stable vocabulary shared by every backend and client.
+Implement opaque identities, capabilities, validated connection states,
+deadlines, cancellation, privacy-safe errors, versioned events, raw reports,
+normalized input, output requests, and a controller registry. Cover the
+contracts with deterministic tests.
 
-Planned modules:
+Exit gate: all domain behavior is testable without an operating system or
+controller.
 
-- `src/domain/identity.rs`: adapter and device identifiers.
-- `src/domain/capability.rs`: supported operations and output modes.
-- `src/domain/state.rs`: validated connection state machine.
-- `src/domain/event.rs`: state, progress, input, and diagnostic events.
-- `src/domain/error.rs`: user-safe error categories with developer context.
-- `src/domain/mod.rs`: public exports and documentation.
+### Goal 2: Fake backend and diagnostic CLI
 
-Tasks:
+Add a deterministic backend and CLI commands for adapter inventory, scanning,
+pairing, connection, information, bounded observation, input testing, and
+sanitized diagnostics. Support human and versioned JSON output.
 
-1. Define opaque identifiers so platform-native handles do not leak into the
-   application layer.
-2. Define state transitions and reject invalid transitions.
-3. Define operation options, deadlines, cancellation, and retry policy.
-4. Define a versioned diagnostic model with privacy level and redaction rules.
-5. Add unit tests for every valid transition and representative invalid paths.
+Exit gate: the complete workflow, including cancellation and failures, runs
+against the fake backend.
 
-Exit gate: domain tests pass without OS access, and the public types have
-documentation suitable for a future GUI client.
+### Goal 3: Read-only Windows USB baseline
 
-## Milestone 2: Backend and Application Contracts
+After requesting that the user connect the controller by USB-C, enumerate its
+HID interfaces and compare sanitized observations with SDL3. Build the first
+BEE-021 decoder exclusively from repeatable evidence.
 
-Goal: make orchestration testable before selecting all native APIs.
+Exit gate: every verified wired input has a sanitized fixture and deterministic
+decoder test. Unknown and output reports remain disabled.
 
-Planned modules:
+### Goal 4: Native Windows Bluetooth
 
-- `src/platform/mod.rs`: `PlatformBackend` and capability contracts.
-- `src/platform/fake.rs`: deterministic fake backend.
-- `src/application/mod.rs`: pairing, reconnect, discovery, and diagnostics.
+Implement Windows adapter and device inventory before pairing. After requesting
+SYNC mode and confirming the selected device, add cancellable pairing,
+connection, and independent HID-readiness checks. Do not access or persist link
+keys.
 
-Tasks:
+Exit gate: Windows reports discovery, pairing, connection, and HID readiness as
+separate evidence-backed states.
 
-1. Define backend methods for adapters, discovery, pair, trust/bond,
-   connect, disconnect, HID inspection, and bounded report observation.
-2. Make unsupported operations explicit instead of silently falling back.
-3. Implement fake success, timeout, cancellation, permission, pairing,
-   connection, and HID-readiness failures.
-4. Define event ordering and shutdown behavior.
-5. Add contract tests that every backend must satisfy.
+### Goal 5: Bluetooth decoding and safe outputs
 
-Exit gate: the complete pairing workflow can be tested against the fake
-backend, including cancellation and all public error categories.
+Compare Bluetooth reports with the USB baseline. Add only verified session
+initialization and decoding. Test each physical control, motion, battery,
+sleep/wake, and reconnect separately. Request user approval before the first
+evidence-backed volatile output command.
 
-## Milestone 3: CLI Foundation
+Exit gate: every supported feature is backed by live evidence and fixtures;
+unobserved features remain explicitly unverified.
 
-Goal: expose the application contract before hardware integration is complete.
+### Goal 6: Windows virtual gamepad
 
-Planned modules:
+Define a versioned service-to-driver contract and a generic gamepad mapping.
+Build a minimal KMDF/VHF source driver outside the safe Rust workspace, keeping
+all Bluetooth and controller logic in Rust. Request permission before enabling
+test-signing or installing the driver.
 
-- `src/cli/args.rs`: command and option parsing.
-- `src/cli/render.rs`: human-readable event rendering.
-- `src/cli/json.rs`: versioned machine-readable output.
-- `src/bin/s2bt.rs`: binary entry point.
+Exit gate: Windows games see a virtual controller, and disconnects or service
+failure always neutralize input and remove stale device state.
 
-Tasks:
+### Goal 7: Automatic Windows service
 
-1. Add `adapters`, `scan`, `pair`, `trust`, `connect`, `disconnect`, `info`,
-   and `diagnose` commands.
-2. Support bounded waits, cancellation, quiet mode, and JSON mode.
-3. Map domain errors to stable exit-code categories.
-4. Ensure human output is concise while JSON includes state and capability
-   details needed by a GUI.
-5. Test argument validation, rendering, JSON schema shape, and exit codes.
+Add automatic reconnect and a small setup/diagnostic client. Validate clean
+installation, startup, shutdown, sleep/wake, Bluetooth disablement, driver
+removal, and rollback.
 
-Exit gate: the CLI works end-to-end with the fake backend and has no platform
-assumptions in command handling.
+Exit gate: normal play needs no foreground diagnostic process.
 
-## Milestone 4: Linux/WSL2 Backend
+### Goal 8: Portability and more controllers
 
-Goal: complete the first hardware-backed vertical slice.
+Implement Linux BlueZ/hidraw against the shared contracts and retain SDL3 as a
+validation or consumer adapter. Add other Switch 2 controllers only through
+separate evidence-backed registry implementations.
 
-Planned modules:
+Exit gate: platform and controller additions do not change the domain,
+diagnostic, or mapping contracts.
 
-- `src/platform/linux/mod.rs`: Linux backend wiring.
-- `src/platform/linux/bluez.rs`: adapter, discovery, pairing, and connection.
-- `src/platform/linux/hid.rs`: HID endpoint and report observation.
-- `tests/linux_contract.rs`: backend contract coverage where practical.
+### Goal 9: Release hardening
 
-Tasks:
+Run pre-commit and pre-push gates, dependency review, parser and IOCTL fuzzing,
+Windows driver analysis, and clean-machine installation tests. Document
+test-signing and production-signing requirements.
 
-1. Select the BlueZ API/crate after checking current Rust version,
-   maintenance, licensing, and `cargo-deny` policy.
-2. Implement read-only adapter and device inventory first.
-3. Add pairing, trust/bond, connect, and disconnect with explicit timeouts.
-4. Detect HID readiness separately from Bluetooth connection.
-5. Add bounded report capture with default redaction and opt-in raw capture.
-6. Run the workflow against reference hardware and add sanitized fixtures.
-7. Document WSL2 permissions and adapter failure recovery.
+Exit gate: all claimed support is present in the support matrix and every local
+release gate passes.
 
-Exit gate: the CLI can discover and pair a reference controller, report the
-actual final state, and export a sanitized diagnostic on failure.
+## Hardware checkpoints
 
-## Milestone 5: Protocol Evidence and Decoding
+Stop and request user action before:
 
-Goal: understand and normalize verified controller input.
+1. connecting the controller over USB-C;
+2. exercising buttons, sticks, triggers, or motion controls;
+3. unplugging USB and entering Bluetooth SYNC mode;
+4. confirming a discovered device for pairing;
+5. sending the first verified volatile output command;
+6. enabling Windows test-signing or installing/removing the VHF driver; and
+7. re-pairing with a Switch 2 when console hardware becomes available.
 
-Planned modules:
+USB is required for the initial protocol baseline but is not a normal Bluetooth
+runtime dependency.
 
-- `src/hid/report.rs`: validated report representation.
-- `src/hid/decoder.rs`: decoder trait and registry.
-- `src/controllers/`: model-specific decoders and mappings.
-- `tests/fixtures/`: sanitized descriptors and reports.
+## Commit and verification policy
 
-Tasks:
-
-1. Record descriptor and report metadata with provenance and confidence.
-2. Implement unknown-report preservation before model-specific decoding.
-3. Add decoders only for layouts supported by fixtures or repeatable hardware
-   evidence.
-4. Normalize buttons, sticks, triggers, battery, and connection events.
-5. Test malformed, truncated, unexpected, and unknown reports.
-
-Exit gate: at least one verified controller model produces stable normalized
-events from fixtures and live hardware.
-
-## Milestone 6: Windows Backend
-
-Goal: provide native host integration for Windows users.
-
-Planned modules:
-
-- `src/platform/windows/mod.rs`: Windows backend wiring.
-- `src/platform/windows/bluetooth.rs`: native discovery and pairing.
-- `src/platform/windows/hid.rs`: native HID enumeration and reads.
-
-Tasks:
-
-1. Select the native API boundary and document required Windows versions.
-2. Implement adapter/device inventory before mutating operations.
-3. Implement pair, connect, disconnect, and HID readiness.
-4. Reuse Linux contract tests through fake and mocked platform seams where
-   native testing is unavailable.
-5. Validate behavior from the Windows host independently of WSL2.
-
-Exit gate: each claimed controller/platform combination has hardware evidence
-for discovery, pairing, connection, and HID readiness.
-
-## Milestone 7: macOS Backend
-
-Goal: add macOS support with accurate capability boundaries.
-
-Tasks:
-
-1. Select the supported macOS API surface and minimum OS version.
-2. Implement discovery and pairing within the permitted native workflow.
-3. Validate HID access and report observation.
-4. Document permission prompts, unsupported operations, and known limitations.
-
-Exit gate: supported macOS workflows are hardware-verified and unavailable
-operations are clearly reported by the CLI.
-
-## Milestone 8: GameCube Output
-
-Goal: translate normalized input into the intended GameCube consumer.
-
-Tasks:
-
-1. Define the GameCube mapping, dead zones, ranges, and conflict rules.
-2. Decide whether output should use an existing mapping layer, virtual HID,
-   or a dedicated platform adapter.
-3. Implement output behind a capability-gated interface.
-4. Document any administrator/root permissions and cleanup behavior.
-5. Add integration tests for mapping and disconnect cleanup.
-
-Exit gate: a verified controller produces repeatable GameCube-compatible
-output, and disconnects never leave a stale virtual device behind.
-
-## Milestone 9: GUI
-
-Goal: provide a guided desktop workflow over the stable application service.
-
-Screens/workflows:
-
-- adapter and device selection;
-- pairing progress and recovery;
-- connection and HID-readiness status;
-- live input test;
-- controller profile and GameCube mapping;
-- sanitized diagnostic export;
-- developer diagnostics for report evidence.
-
-Tasks:
-
-1. Choose the GUI toolkit only after CLI event and JSON contracts stabilize.
-2. Consume application events rather than calling platform APIs directly.
-3. Ensure every GUI action has a CLI-equivalent operation.
-4. Test cancellation, reconnect, failure recovery, and permission prompts.
-
-Exit gate: a new user can pair a verified controller without a terminal, and a
-developer can export the same evidence available from the CLI.
-
-## Cross-Cutting Verification
-
-For each milestone:
-
-1. Add focused unit or contract tests with the change.
-2. Run formatting, linting, and tests using the pinned toolchain.
-3. Run the repository pre-commit checks for source and documentation changes.
-4. Run pre-push checks before any release or publish proposal.
-5. Update the support matrix, changelog, and relevant documentation.
-6. Review the diff for secrets, raw captures, binary artifacts, and local paths.
-
-## First Five Pull Requests
-
-1. `docs: add WSL2 lab and support-matrix templates`
-2. `feat: add domain identifiers, capabilities, states, and errors`
-3. `feat: add backend contract, fake backend, and application workflow`
-4. `feat: add s2bt CLI with human and JSON output`
-5. `feat: add Linux inventory and pairing backend`
-
-Each pull request should remain independently reviewable and leave the tree
-passing all available deterministic checks.
+Each goal is divided into the smallest reviewable vertical slices. Before each
+commit, run formatting, checking, Clippy, tests, and the repository pre-commit
+hooks. Before release or publication, also run the pre-push dependency,
+advisory, secret, and artifact checks. Update this plan after hardware evidence
+changes an assumption or exposes a new protocol boundary.
