@@ -4,6 +4,7 @@
 pub mod application;
 pub mod backend;
 pub mod cli;
+pub mod controllers;
 pub mod domain;
 pub mod platform;
 pub mod protocol;
