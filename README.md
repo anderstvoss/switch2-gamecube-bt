@@ -41,7 +41,6 @@ The ordered implementation roadmap is in
 The native Windows hardware procedure is in
 [docs/WINDOWS-LAB.md](docs/WINDOWS-LAB.md), and evidence-backed support claims
 are tracked in [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md).
-
 ## Diagnostic CLI status
 
 The current `s2bt` CLI exercises a deterministic fake backend only. It does not
