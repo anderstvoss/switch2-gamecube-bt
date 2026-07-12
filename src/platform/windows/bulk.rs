@@ -44,8 +44,8 @@ pub struct BulkReportObservation {
 /// Sanitized outcome of the explicitly approved start-stream probe.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MinimalInputProbeObservation {
-    /// Length of the reply received immediately after the command.
-    pub command_reply_length: usize,
+    /// Length of each command reply in command order.
+    pub command_reply_lengths: Vec<usize>,
     /// Bounded report metadata observed after the reply.
     pub reports: Vec<BulkReportObservation>,
 }
@@ -185,18 +185,68 @@ pub fn run_minimal_input_probe(
     duration: Duration,
     report_limit: usize,
 ) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_input_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        &[ClassifiedCommand::StartInputStream],
+    )
+}
+
+/// Runs the approved report-format `0x05` plus start-stream experiment.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error under the same identity, endpoint, transfer,
+/// and observation bounds as [`run_minimal_input_probe`].
+pub fn run_report5_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_input_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        &[
+            ClassifiedCommand::SetInputReportFormat,
+            ClassifiedCommand::StartInputStream,
+        ],
+    )
+}
+
+fn run_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+    commands: &[ClassifiedCommand],
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
     if duration.is_zero() || report_limit == 0 {
         return Err(invalid_data("USB input probe bounds must be nonzero"));
+    }
+    if commands.is_empty() {
+        return Err(invalid_data("USB input probe requires a reviewed command"));
     }
     let layout = inspect_bulk_endpoints(vendor_id, product_id, interface_number)?;
     let transfer_timeout = Duration::from_millis(250).min(duration);
     let mut transport = open_bulk_transport(vendor_id, product_id, layout, transfer_timeout)?;
-    transport
-        .send(ClassifiedCommand::StartInputStream.packet())
-        .map_err(transport_error)?;
-    let command_reply_length = transport
-        .receive(MAX_TRANSFER_LENGTH)
-        .map_err(transport_error)?;
+    let mut command_reply_lengths = Vec::with_capacity(commands.len());
+    for command in commands {
+        transport.send(command.packet()).map_err(transport_error)?;
+        command_reply_lengths.push(
+            transport
+                .receive(MAX_TRANSFER_LENGTH)
+                .map_err(transport_error)?,
+        );
+    }
 
     let deadline = Instant::now() + duration;
     let mut reports = Vec::new();
@@ -209,7 +259,7 @@ pub fn run_minimal_input_probe(
         }
     }
     Ok(MinimalInputProbeObservation {
-        command_reply_length,
+        command_reply_lengths,
         reports,
     })
 }

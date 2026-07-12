@@ -103,6 +103,19 @@ pub enum Command {
         #[arg(long, default_value_t = 64, value_parser = parse_limit)]
         limit: usize,
     },
+    /// Run the reviewed report-format `0x05` plus start-stream probe.
+    #[cfg(windows)]
+    UsbReport5InputProbe {
+        /// Confirm both reviewed host-to-controller writes.
+        #[arg(long)]
+        approve_reviewed_writes: bool,
+        /// Bounded input observation duration in seconds.
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+        /// Maximum number of report metadata entries to retain.
+        #[arg(long, default_value_t = 64, value_parser = parse_limit)]
+        limit: usize,
+    },
     /// Fingerprint the BEE-021 HID descriptor without exposing its bytes.
     #[cfg(windows)]
     UsbDescriptor,
@@ -128,7 +141,9 @@ pub fn run(args: Args) -> CliResult {
         | Command::UsbDescriptor
         | Command::UsbObserve { .. } => "windows_usb_read_only",
         #[cfg(windows)]
-        Command::UsbInputProbe { .. } => "windows_usb_reviewed_experiment",
+        Command::UsbInputProbe { .. } | Command::UsbReport5InputProbe { .. } => {
+            "windows_usb_reviewed_experiment"
+        }
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -221,7 +236,7 @@ enum Payload {
     },
     #[cfg(windows)]
     UsbInputProbe {
-        command_reply_length: usize,
+        command_reply_lengths: Vec<usize>,
         reports: Vec<UsbInputMetadataView>,
     },
 }
@@ -354,6 +369,12 @@ fn execute(
             limit,
         } => usb_input_probe(approve_reviewed_write, seconds, limit),
         #[cfg(windows)]
+        Command::UsbReport5InputProbe {
+            approve_reviewed_writes,
+            seconds,
+            limit,
+        } => usb_report5_input_probe(approve_reviewed_writes, seconds, limit),
+        #[cfg(windows)]
         Command::UsbDescriptor => {
             let descriptor = crate::platform::windows::inspect_usb_descriptor(
                 NINTENDO_VENDOR_ID,
@@ -400,8 +421,37 @@ fn usb_input_probe(approved: bool, seconds: u64, limit: usize) -> Result<Payload
         Duration::from_secs(seconds),
         limit,
     )?;
-    Ok(Payload::UsbInputProbe {
-        command_reply_length: observation.command_reply_length,
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_report5_input_probe(
+    approved: bool,
+    seconds: u64,
+    limit: usize,
+) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the two reviewed USB writes require --approve-reviewed-writes",
+        ));
+    }
+    let observation = crate::platform::windows::run_report5_input_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_probe_payload(
+    observation: crate::platform::windows::MinimalInputProbeObservation,
+) -> Payload {
+    Payload::UsbInputProbe {
+        command_reply_lengths: observation.command_reply_lengths,
         reports: observation
             .reports
             .into_iter()
@@ -411,7 +461,7 @@ fn usb_input_probe(approved: bool, seconds: u64, limit: usize) -> Result<Payload
                 count: 1,
             })
             .collect(),
-    })
+    }
 }
 
 #[cfg(windows)]
@@ -593,9 +643,9 @@ fn render_human(payload: Payload) -> String {
         Payload::UsbInputMetadata { items } => render_usb_input_metadata(&mut output, items),
         #[cfg(windows)]
         Payload::UsbInputProbe {
-            command_reply_length,
+            command_reply_lengths,
             reports,
-        } => render_usb_input_probe(&mut output, command_reply_length, reports),
+        } => render_usb_input_probe(&mut output, command_reply_lengths, reports),
     }
     output
 }
@@ -619,10 +669,12 @@ fn render_usb_input_metadata(output: &mut String, items: Vec<UsbInputMetadataVie
 #[cfg(windows)]
 fn render_usb_input_probe(
     output: &mut String,
-    command_reply_length: usize,
+    command_reply_lengths: Vec<usize>,
     reports: Vec<UsbInputMetadataView>,
 ) {
-    let _ = writeln!(output, "command reply: {command_reply_length} bytes");
+    for (index, length) in command_reply_lengths.into_iter().enumerate() {
+        let _ = writeln!(output, "command {index} reply: {length} bytes");
+    }
     for report in reports {
         let _ = writeln!(
             output,

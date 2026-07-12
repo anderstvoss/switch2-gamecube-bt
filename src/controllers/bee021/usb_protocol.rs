@@ -148,6 +148,26 @@ impl InitializationPlan {
         }
     }
 
+    /// Returns the next-smallest input probe supported by SDL history.
+    ///
+    /// This selects the 64-byte report format before starting the stream. Both
+    /// writes remain candidate-volatile and normal plan execution rejects them.
+    #[must_use]
+    pub fn candidate_report5_input_probe() -> Self {
+        Self {
+            steps: Box::new([
+                InitializationStep::Command {
+                    command: ClassifiedCommand::SetInputReportFormat,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::StartInputStream,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+            ]),
+        }
+    }
+
     /// Returns the ordered plan items for diagnostics and review.
     #[must_use]
     pub fn steps(&self) -> &[InitializationStep] {
@@ -339,6 +359,27 @@ mod tests {
                 SafetyClass::CandidateVolatile
             ))
         );
+        assert!(transport.sent.is_empty());
+    }
+
+    #[test]
+    fn report5_input_probe_preserves_order_and_remains_non_executable() {
+        let plan = InitializationPlan::candidate_report5_input_probe();
+        assert_eq!(
+            plan.steps(),
+            [
+                InitializationStep::Command {
+                    command: ClassifiedCommand::SetInputReportFormat,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::StartInputStream,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+            ]
+        );
+        let mut transport = MockTransport::default();
+        assert!(plan.execute(&mut transport).is_err());
         assert!(transport.sent.is_empty());
     }
 
