@@ -207,6 +207,17 @@ vendor-service UUID as a protocol lead, but is explicitly developed and tested
 only with Pro Controller 2; it must not be treated as BEE-021 initialization
 evidence.
 
+The verified supervised device-selector scan also completed normally with zero
+devices. The advertisement watcher and the unpaired device-selector watcher
+are now independent negative Windows discovery evidence. Audit the available
+Windows implementation lead before choosing another physical experiment.
+
+That audit found that the available Windows implementation uses an ESP32-S3 BLE
+bridge, not the Windows Bluetooth stack. This is an external hardware and
+architecture alternative, not evidence that a further host-only Windows scan
+will discover BEE-021. Do not obtain, flash, configure, or connect such a
+bridge without explicit approval.
+
 The previous known-device, association-endpoint, and active PairTool scans are
 preserved as negative Bluetooth Classic evidence only. They do not test BLE and
 must not be interpreted as a controller or Windows hardware failure. The

@@ -136,20 +136,28 @@ Conclusion: Classic discovery is not the BEE-021 route to pursue.
   valid negative evidence for discovery through the current Windows BLE
   advertisement watcher, not proof of a controller defect or non-BLE transport.
   No pairing, connection, GATT access, or controller command occurred.
+- A user-supervised eight-second unpaired BLE device-selector scan used the
+  same verified package identity and returned zero devices. This is independent
+  negative evidence for that Windows discovery mechanism only; it does not
+  establish a controller defect or rule out BLE. No pairing, connection, GATT
+  access, or controller command occurred.
 - Test certificate, MSIX output, staging directory, and package artifacts are
   local-only and ignored. Do not commit or expose them.
 
 ## Immediate next steps
 
-1. Run the new registered-activation Windows unpaired-BLE device-selector scan
-   without the controller to validate its lifecycle and sanitized output.
-2. If it completes normally, request one supervised SYNC attempt using that
-   distinct discovery path. Do not pair, connect, or send commands.
-3. The public BlueZ plugin establishes a shared Switch 2 vendor-service lead,
+1. The audited public Windows implementation uses a separate ESP32-S3 BLE
+   bridge, rather than the Windows Bluetooth stack. Treat that as an external
+   hardware/architecture option, not a host-only discovery result or a basis
+   for Windows protocol commands.
+2. The public BlueZ plugin establishes a shared Switch 2 vendor-service lead,
    but states that it was developed and tested only with Pro Controller 2; do
    not apply its session initialization to BEE-021. The public input viewer is
    a handle and feature-flag lead only because it includes writes and sensitive
    reads that this project must not perform.
+3. Decide whether to investigate a separate BLE bridge or to continue with a
+   Windows-host-only approach. Do not buy, flash, connect, or configure an
+   external bridge without explicit user approval.
 4. Add a bounded, read-only GATT service-discovery client only after BEE-021
    discovery evidence, fixtures, and explicit user approval.
 

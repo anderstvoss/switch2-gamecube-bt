@@ -73,3 +73,15 @@ discovery evidence.
 Run the prebuilt, registered-activation eight-second device-selector scan while
 the user places BEE-021 in SYNC mode. If a sanitized candidate appears, stop
 for confirmation before any connection or GATT access.
+
+## Verified device-selector SYNC attempt
+
+The user held SYNC as the prebuilt eight-second unpaired BLE device-selector
+scan ran through registered package activation. It completed normally and
+returned zero devices.
+
+This is negative evidence for BEE-021 discovery through the current Windows
+device-selector watcher. Together with the verified advertisement watcher it
+does not establish a controller defect or rule out BLE. No candidate was
+available to confirm, and the experiment did not pair, connect, perform GATT
+service discovery, or send a controller command.
