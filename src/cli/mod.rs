@@ -129,6 +129,19 @@ pub enum Command {
         #[arg(long, default_value_t = 64, value_parser = parse_limit)]
         limit: usize,
     },
+    /// Run the exact pinned SDL sequence as an isolated reference experiment.
+    #[cfg(windows)]
+    UsbSdlReferenceProbe {
+        /// Confirm the exact ten-packet SDL reference sequence.
+        #[arg(long)]
+        approve_exact_sdl_sequence: bool,
+        /// Bounded input observation duration in seconds.
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+        /// Maximum number of report metadata entries to retain.
+        #[arg(long, default_value_t = 64, value_parser = parse_limit)]
+        limit: usize,
+    },
     /// Fingerprint the BEE-021 HID descriptor without exposing its bytes.
     #[cfg(windows)]
     UsbDescriptor,
@@ -156,7 +169,8 @@ pub fn run(args: Args) -> CliResult {
         #[cfg(windows)]
         Command::UsbInputProbe { .. }
         | Command::UsbReport5InputProbe { .. }
-        | Command::UsbDescribedInputProbe { .. } => "windows_usb_reviewed_experiment",
+        | Command::UsbDescribedInputProbe { .. }
+        | Command::UsbSdlReferenceProbe { .. } => "windows_usb_reviewed_experiment",
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -394,6 +408,12 @@ fn execute(
             limit,
         } => usb_described_input_probe(approve_reviewed_writes, seconds, limit),
         #[cfg(windows)]
+        Command::UsbSdlReferenceProbe {
+            approve_exact_sdl_sequence,
+            seconds,
+            limit,
+        } => usb_sdl_reference_probe(approve_exact_sdl_sequence, seconds, limit),
+        #[cfg(windows)]
         Command::UsbDescriptor => usb_descriptor(),
         #[cfg(windows)]
         Command::UsbObserve { seconds, limit } => usb_observe(seconds, limit),
@@ -481,6 +501,28 @@ fn usb_described_input_probe(
         ));
     }
     let observation = crate::platform::windows::run_described_input_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_sdl_reference_probe(
+    approved: bool,
+    seconds: u64,
+    limit: usize,
+) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the exact SDL sequence requires --approve-exact-sdl-sequence",
+        ));
+    }
+    let observation = crate::platform::windows::run_sdl_reference_input_probe(
         NINTENDO_VENDOR_ID,
         BEE_021_USB_PRODUCT_ID,
         BEE_021_BULK_INTERFACE,

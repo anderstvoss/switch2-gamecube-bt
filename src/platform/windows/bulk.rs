@@ -10,7 +10,9 @@ use nusb::{
 };
 
 use crate::{
-    controllers::bee021::usb_protocol::{BulkTransport, ClassifiedCommand, TransportError},
+    controllers::bee021::usb_protocol::{
+        BulkTransport, ClassifiedCommand, TransportError, sdl_reference_packets,
+    },
     domain::{ErrorCategory, UserSafeError},
 };
 
@@ -257,18 +259,65 @@ fn run_input_probe(
     report_limit: usize,
     commands: &[ClassifiedCommand],
 ) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    let packets = commands
+        .iter()
+        .map(|command| command.packet())
+        .collect::<Vec<_>>();
+    run_packet_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        &packets,
+    )
+}
+
+/// Runs the exact pinned SDL sequence as an isolated upstream reference.
+///
+/// This is intentionally separate from normal project initialization because
+/// the sequence contains SDL-labeled unknown, rumble, and grip packets.
+///
+/// # Errors
+///
+/// Returns a privacy-safe bounded transport or observation error.
+pub fn run_sdl_reference_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_packet_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        sdl_reference_packets(),
+    )
+}
+
+fn run_packet_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+    packets: &[&[u8]],
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
     if duration.is_zero() || report_limit == 0 {
         return Err(invalid_data("USB input probe bounds must be nonzero"));
     }
-    if commands.is_empty() {
+    if packets.is_empty() {
         return Err(invalid_data("USB input probe requires a reviewed command"));
     }
     let layout = inspect_bulk_endpoints(vendor_id, product_id, interface_number)?;
     let transfer_timeout = Duration::from_millis(250).min(duration);
     let mut transport = open_bulk_transport(vendor_id, product_id, layout, transfer_timeout)?;
-    let mut command_reply_lengths = Vec::with_capacity(commands.len());
-    for command in commands {
-        transport.send(command.packet()).map_err(transport_error)?;
+    let mut command_reply_lengths = Vec::with_capacity(packets.len());
+    for packet in packets {
+        transport.send(packet).map_err(transport_error)?;
         command_reply_lengths.push(
             transport
                 .receive(MAX_TRANSFER_LENGTH)
