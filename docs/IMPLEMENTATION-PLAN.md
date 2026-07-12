@@ -67,6 +67,14 @@ Four understood packets remain `candidate volatile`, and six unknown,
 rumble-related, or non-BEE-021 steps block all execution. No live transport or
 public executable-plan constructor exists. See Decision 0002.
 
+Windows' existing `WinUSB` binding on USB interface 1 can now be inspected
+without replacing a driver or claiming the interface. A live read-only
+descriptor check found one 64-byte bulk IN endpoint at `0x82` and one 64-byte
+bulk OUT endpoint at `0x02`. Endpoint selection remains dynamic, matching the
+auditable SDL3 approach. The next checkpoint is to add a bounded transport
+implementation; it must remain unreachable from the CLI until a separately
+reviewed initialization slice is approved for live use.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting
