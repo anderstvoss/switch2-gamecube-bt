@@ -18,21 +18,23 @@ run yet.
 
 ## Decision
 
-Prioritize a direct Linux BlueZ experiment as the first working-connection
-path: install WSL2 with a supported Linux distribution and attach a dedicated
-USB Bluetooth adapter to that environment. Use only bounded, read-only BlueZ
-discovery first. Keep the ESP32-S3 bridge as an alternative if direct BlueZ
-discovery cannot see BEE-021.
+Do not use WSL2. Prioritize an ESP32-S3 BLE bridge as the first working-
+connection path because it runs a separate BLE stack from the Windows host.
+First create a project-owned, read-only serial bridge diagnostic that can prove
+bridge availability and report only sanitized discovery metadata. Do not adopt
+the public application's pairing, initialization, virtual-device, or output
+logic.
 
 ## Consequences
 
-- Installing WSL2, installing a Linux distribution, installing adapter
-  passthrough tooling, or attaching an adapter changes local Windows state and
-  requires explicit user approval.
-- A dedicated USB Bluetooth adapter is preferred so the existing Windows radio
-  is not disrupted.
-- Do not flash, configure, or connect an ESP32-S3 bridge without explicit
-  approval. Its public implementation is an interoperability lead, not a
-  trusted production dependency.
+- A compatible ESP32-S3 development board is not attached to the current host.
+  Obtaining one, flashing its firmware, or attaching it requires user action
+  and approval.
+- Do not connect a controller through the bridge until the project-owned
+  read-only diagnostic observes a sanitized candidate and the user authorizes
+  the connection.
+- The public bridge implementation is an interoperability lead, not a trusted
+  production dependency. In particular, it includes pairing, initialization,
+  virtual-device, and output behavior outside this project's current scope.
 - The portable Rust contracts remain the integration boundary for both Linux
   and bridge transports.
