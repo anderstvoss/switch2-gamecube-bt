@@ -1,6 +1,9 @@
 //! Evidence-backed BEE-021 wired report decoding.
 
-use crate::protocol::{Axis, Button, InputFrame, MotionSample};
+use crate::{
+    controllers::bee021::calibration::Bee021Calibration,
+    protocol::{Axis, Button, InputFrame, MotionSample},
+};
 
 const STANDARD_GRAVITY: f32 = 9.806_65;
 const ACCELERATION_SCALE: f32 = STANDARD_GRAVITY * 8.0 / i16::MAX as f32;
@@ -30,6 +33,18 @@ pub enum WiredDecodeError {
 ///
 /// Rejects reports with an unexpected identifier or length before indexing.
 pub fn decode_wired_report(report: &[u8]) -> Result<InputFrame, WiredDecodeError> {
+    decode_wired_report_with_calibration(report, None)
+}
+
+/// Decodes one wired state report using optional local read-only calibration.
+///
+/// # Errors
+///
+/// Rejects reports with an unexpected identifier or length before indexing.
+pub fn decode_wired_report_with_calibration(
+    report: &[u8],
+    calibration: Option<&Bee021Calibration>,
+) -> Result<InputFrame, WiredDecodeError> {
     if report.len() != WIRED_REPORT_LENGTH {
         return Err(WiredDecodeError::InvalidLength(report.len()));
     }
@@ -57,21 +72,37 @@ pub fn decode_wired_report(report: &[u8]) -> Result<InputFrame, WiredDecodeError
     add_button(&mut frame, report[7], 0x40, Button::L);
     add_button(&mut frame, report[7], 0x80, Button::ZL);
 
+    let left_x = unpack_low(report[11], report[12]);
+    let left_y = unpack_high(report[12], report[13]);
+    let cstick_x = unpack_low(report[14], report[15]);
+    let cstick_y = unpack_high(report[15], report[16]);
     frame.axes.insert(
         Axis::LeftX,
-        normalize_12bit(unpack_low(report[11], report[12])),
+        calibration.map_or_else(
+            || normalize_12bit(left_x),
+            |value| value.left_stick.x.normalize(left_x),
+        ),
     );
     frame.axes.insert(
         Axis::LeftY,
-        -normalize_12bit(unpack_high(report[12], report[13])),
+        -calibration.map_or_else(
+            || normalize_12bit(left_y),
+            |value| value.left_stick.y.normalize(left_y),
+        ),
     );
     frame.axes.insert(
         Axis::CStickX,
-        normalize_12bit(unpack_low(report[14], report[15])),
+        calibration.map_or_else(
+            || normalize_12bit(cstick_x),
+            |value| value.right_stick.x.normalize(cstick_x),
+        ),
     );
     frame.axes.insert(
         Axis::CStickY,
-        -normalize_12bit(unpack_high(report[15], report[16])),
+        -calibration.map_or_else(
+            || normalize_12bit(cstick_y),
+            |value| value.right_stick.y.normalize(cstick_y),
+        ),
     );
     frame
         .axes

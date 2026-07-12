@@ -146,6 +146,13 @@ sensor timestamp warm-up; doing so yielded responsive motion in all 4,096
 observed frames. Scale and bias remain provisional until read-only calibration
 is incorporated.
 
+Read-only calibration is now implemented and verified: seven documented blocks
+parse successfully, factory calibration is valid, and no user stick override is
+present. The serial-number block is skipped, and calibration bytes never cross
+the process boundary. The calibrated decoder centers values near zero; full
+stick endpoint verification remains outstanding because physical travel was not
+captured in the latest run.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting

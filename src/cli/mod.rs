@@ -151,6 +151,29 @@ pub enum Command {
         #[arg(long)]
         approve_reviewed_write: bool,
     },
+    /// Read documented calibration blocks without exposing their contents.
+    #[cfg(windows)]
+    UsbCalibrationStatus {
+        /// Confirm the documented read-only calibration operation.
+        #[arg(long)]
+        approve_read_only_calibration: bool,
+    },
+    /// Exercise decoded input using local read-only calibration.
+    #[cfg(windows)]
+    UsbCalibratedInputTest {
+        /// Confirm the documented read-only calibration operation.
+        #[arg(long)]
+        approve_read_only_calibration: bool,
+        /// Confirm the isolated SDL initialization needed after calibration.
+        #[arg(long)]
+        approve_exact_sdl_sequence: bool,
+        /// Bounded input exercise duration in seconds.
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u64).range(1..=60))]
+        seconds: u64,
+        /// Maximum number of frames to decode.
+        #[arg(long, default_value_t = 4_096, value_parser = parse_frame_limit)]
+        limit: usize,
+    },
     /// Fingerprint the BEE-021 HID descriptor without exposing its bytes.
     #[cfg(windows)]
     UsbDescriptor,
@@ -185,7 +208,9 @@ pub fn run(args: Args) -> CliResult {
         | Command::UsbBulkInventory
         | Command::UsbDescriptor
         | Command::UsbObserve { .. }
-        | Command::UsbDecodedInputTest { .. } => "windows_usb_read_only",
+        | Command::UsbDecodedInputTest { .. }
+        | Command::UsbCalibrationStatus { .. }
+        | Command::UsbCalibratedInputTest { .. } => "windows_usb_read_only",
         #[cfg(windows)]
         Command::UsbInputProbe { .. }
         | Command::UsbReport5InputProbe { .. }
@@ -309,6 +334,13 @@ enum Payload {
         motion_samples: usize,
         acceleration_ranges: Vec<MotionRangeView>,
         angular_velocity_ranges: Vec<MotionRangeView>,
+    },
+    #[cfg(windows)]
+    UsbCalibration {
+        blocks_read: u8,
+        factory_valid: bool,
+        left_user_override: bool,
+        right_user_override: bool,
     },
 }
 
@@ -460,6 +492,12 @@ fn execute(
         Command::UsbMotionEnableProbe {
             approve_reviewed_write,
         } => usb_motion_enable_probe(approve_reviewed_write),
+        #[cfg(windows)]
+        Command::UsbCalibrationStatus {
+            approve_read_only_calibration,
+        } => usb_calibration_status(approve_read_only_calibration),
+        #[cfg(windows)]
+        command @ Command::UsbCalibratedInputTest { .. } => usb_calibrated_input_command(&command),
         #[cfg(windows)]
         Command::UsbDescriptor => usb_descriptor(),
         #[cfg(windows)]
@@ -620,6 +658,74 @@ fn usb_motion_enable_probe(approved: bool) -> Result<Payload, UserSafeError> {
 }
 
 #[cfg(windows)]
+fn usb_calibration_status(approved: bool) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "read-only calibration requires --approve-read-only-calibration",
+        ));
+    }
+    let observation = crate::platform::windows::read_calibration(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+    )?;
+    Ok(Payload::UsbCalibration {
+        blocks_read: observation.blocks_read,
+        factory_valid: observation.status.factory_valid,
+        left_user_override: observation.status.left_user_override,
+        right_user_override: observation.status.right_user_override,
+    })
+}
+
+#[cfg(windows)]
+fn usb_calibrated_input(
+    approved_calibration: bool,
+    approved_sequence: bool,
+    seconds: u64,
+    limit: usize,
+) -> Result<Payload, UserSafeError> {
+    if !approved_calibration {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "calibrated input requires --approve-read-only-calibration",
+        ));
+    }
+    if !approved_sequence {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "calibrated input requires --approve-exact-sdl-sequence",
+        ));
+    }
+    let observation = crate::platform::windows::observe_calibrated_usb_input(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(decoded_input_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_calibrated_input_command(command: &Command) -> Result<Payload, UserSafeError> {
+    let &Command::UsbCalibratedInputTest {
+        approve_read_only_calibration,
+        approve_exact_sdl_sequence,
+        seconds,
+        limit,
+    } = command
+    else {
+        unreachable!("caller matches calibrated input command")
+    };
+    usb_calibrated_input(
+        approve_read_only_calibration,
+        approve_exact_sdl_sequence,
+        seconds,
+        limit,
+    )
+}
+
+#[cfg(windows)]
 fn usb_probe_payload(
     observation: crate::platform::windows::MinimalInputProbeObservation,
 ) -> Payload {
@@ -664,7 +770,14 @@ fn usb_decoded_input(seconds: u64, limit: usize) -> Result<Payload, UserSafeErro
         Duration::from_secs(seconds),
         limit,
     )?;
-    Ok(Payload::UsbDecodedInput {
+    Ok(decoded_input_payload(observation))
+}
+
+#[cfg(windows)]
+fn decoded_input_payload(
+    observation: crate::platform::windows::UsbDecodedInputObservation,
+) -> Payload {
+    Payload::UsbDecodedInput {
         buttons_seen: observation
             .buttons_seen
             .into_iter()
@@ -683,7 +796,7 @@ fn usb_decoded_input(seconds: u64, limit: usize) -> Result<Payload, UserSafeErro
         motion_samples: observation.motion_samples,
         acceleration_ranges: motion_range_views(observation.acceleration_ranges),
         angular_velocity_ranges: motion_range_views(observation.angular_velocity_ranges),
-    })
+    }
 }
 
 #[cfg(windows)]
@@ -851,24 +964,62 @@ fn render_human(payload: Payload) -> String {
             reports,
         } => render_usb_input_probe(&mut output, command_reply_lengths, reports),
         #[cfg(windows)]
-        Payload::UsbDecodedInput {
-            buttons_seen,
-            axis_ranges,
-            frames,
-            motion_samples,
-            acceleration_ranges,
-            angular_velocity_ranges,
-        } => render_usb_decoded_input(
+        payload @ Payload::UsbDecodedInput { .. } => {
+            render_usb_decoded_payload(&mut output, payload);
+        }
+        #[cfg(windows)]
+        Payload::UsbCalibration {
+            blocks_read,
+            factory_valid,
+            left_user_override,
+            right_user_override,
+        } => render_usb_calibration(
             &mut output,
-            &buttons_seen,
-            axis_ranges,
-            frames,
-            motion_samples,
-            acceleration_ranges,
-            angular_velocity_ranges,
+            blocks_read,
+            factory_valid,
+            left_user_override,
+            right_user_override,
         ),
     }
     output
+}
+
+#[cfg(windows)]
+fn render_usb_decoded_payload(output: &mut String, payload: Payload) {
+    let Payload::UsbDecodedInput {
+        buttons_seen,
+        axis_ranges,
+        frames,
+        motion_samples,
+        acceleration_ranges,
+        angular_velocity_ranges,
+    } = payload
+    else {
+        unreachable!("caller matches the decoded input payload")
+    };
+    render_usb_decoded_input(
+        output,
+        &buttons_seen,
+        axis_ranges,
+        frames,
+        motion_samples,
+        acceleration_ranges,
+        angular_velocity_ranges,
+    );
+}
+
+#[cfg(windows)]
+fn render_usb_calibration(
+    output: &mut String,
+    blocks_read: u8,
+    factory_valid: bool,
+    left_user_override: bool,
+    right_user_override: bool,
+) {
+    let _ = writeln!(
+        output,
+        "calibration: blocks={blocks_read} factory_valid={factory_valid} left_user_override={left_user_override} right_user_override={right_user_override}"
+    );
 }
 
 #[cfg(windows)]

@@ -65,6 +65,11 @@ interface 1 for bounded initialization commands and replies, then release it.
 Read continuous report ID `0x05` state from HID interface 0. Do not wait for
 state reports on bulk IN; that endpoint carries command replies in SDL's model.
 
+Calibration testing requests seven documented read-only blocks and skips the
+serial-number block. Calibration is applied only in memory. A calibrated input
+capture must report actual physical edge exercise separately; near-center data
+must not be presented as endpoint verification.
+
 ## Bluetooth session
 
 The Bluetooth session begins with read-only adapter and device inventory. The
