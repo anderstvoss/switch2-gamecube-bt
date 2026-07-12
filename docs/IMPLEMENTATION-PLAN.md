@@ -75,6 +75,15 @@ auditable SDL3 approach. The next checkpoint is to add a bounded transport
 implementation; it must remain unreachable from the CLI until a separately
 reviewed initialization slice is approved for live use.
 
+The bounded transport implementation now exists behind an internal Windows
+adapter boundary. It validates endpoint direction, packet size, nonzero
+deadlines, exact writes, bounded nonempty reads, and redacts platform transfer
+failures into stable timeout or failure categories. Its interface-claiming
+factory is intentionally unused and not exported by the Windows module, so no
+production or CLI path can create it. No live interface claim or transfer has
+been performed. The next review gate is deciding which minimum volatile input
+initialization slice has sufficient evidence for a user-approved live test.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting
