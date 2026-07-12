@@ -178,6 +178,13 @@ the Rust scanner and protocol model package-agnostic. Generating a test
 certificate, installing an MSIX package, or changing Windows developer policy
 remains a separate user-approved checkpoint.
 
+The authorized local MSIX capability host is now installed with the current
+result-file support. Packaged adapter status succeeded, and a controller-free
+two-second packaged scan completed successfully with zero advertisements. This
+validates package launch, sanitized result retrieval, and watcher lifecycle;
+the next checkpoint is a prebuilt eight-second packaged scan while the user
+places BEE-021 in SYNC mode.
+
 The previous known-device, association-endpoint, and active PairTool scans are
 preserved as negative Bluetooth Classic evidence only. They do not test BLE and
 must not be interpreted as a controller or Windows hardware failure. The

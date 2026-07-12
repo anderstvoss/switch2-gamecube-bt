@@ -121,22 +121,20 @@ Conclusion: Classic discovery is not the BEE-021 route to pursue.
   added to write only sanitized CLI output to a caller-selected local file.
 - The test package must be rebuilt with an incremented package version after
   executable or manifest changes before it can replace the installed version.
+- Local package version `0.1.0.1` now contains the result-file support. Packaged
+  adapter status succeeded, and a controller-free two-second packaged BLE scan
+  completed with zero advertisements. This validates the result channel and
+  watcher lifecycle but is not controller discovery evidence.
 - Test certificate, MSIX output, staging directory, and package artifacts are
   local-only and ignored. Do not commit or expose them.
 
 ## Immediate next steps
 
-1. Rebuild the local test MSIX with the incremented version and the latest
-   `--result-file` CLI support; sign and install the update.
-2. Run `ble-adapter-status` inside package identity and retrieve its sanitized
-   result through the package-local result-file channel.
-3. Run a package-identity, bounded BLE scan without the controller first only
-   to validate the result channel and watcher lifecycle.
-4. Ask the user for `ready for BLE SYNC`, then start the prebuilt packaged
+1. Ask the user for `ready for BLE SYNC`, then start the prebuilt packaged
    eight-second scan and prompt immediate SYNC press.
-5. If a sanitized Switch 2 BLE service candidate appears, stop and request user
+2. If a sanitized Switch 2 BLE service candidate appears, stop and request user
    confirmation before any GATT connection. Do not pair or send commands.
-6. Audit public Switch 2 BLE protocol implementations before adding a bounded,
+3. Audit public Switch 2 BLE protocol implementations before adding a bounded,
    read-only GATT service-discovery client. Add session commands only after
    evidence, fixtures, and explicit user approval.
 

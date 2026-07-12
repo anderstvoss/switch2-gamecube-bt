@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted for implementation planning; package installation is not authorized.
+Accepted and implemented for local lab use. The user authorized creation and
+installation of the test package and its local test certificate. Removal of
+either artifact, or any broader Windows policy change, requires new approval.
 
 ## Context
 
