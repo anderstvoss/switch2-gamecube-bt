@@ -1,7 +1,10 @@
 //! Read-only Windows Bluetooth inventory.
 
 use sha2::{Digest, Sha256};
-use windows::{Devices::Enumeration::DeviceInformation, core::HSTRING};
+use windows::{
+    Devices::{Bluetooth::BluetoothAdapter, Enumeration::DeviceInformation},
+    core::HSTRING,
+};
 
 use crate::domain::{ErrorCategory, UserSafeError};
 
@@ -34,6 +37,10 @@ pub struct BluetoothInventoryObservation {
 /// Returns a sanitized platform error if Windows cannot enumerate the selector
 /// or read one of the returned device properties.
 pub fn enumerate_bluetooth() -> Result<BluetoothInventoryObservation, UserSafeError> {
+    let _adapter = BluetoothAdapter::GetDefaultAsync()
+        .map_err(platform_error)?
+        .get()
+        .map_err(platform_error)?;
     let selector = windows::Devices::Bluetooth::BluetoothDevice::GetDeviceSelector()
         .map_err(platform_error)?;
     let devices = DeviceInformation::FindAllAsyncAqsFilter(&selector)
@@ -55,7 +62,7 @@ pub fn enumerate_bluetooth() -> Result<BluetoothInventoryObservation, UserSafeEr
     }
 
     Ok(BluetoothInventoryObservation {
-        adapter_present: !observations.is_empty(),
+        adapter_present: true,
         devices: observations,
     })
 }
