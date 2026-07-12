@@ -5,7 +5,7 @@
          IgnorableNamespaces="uap rescap">
   <Identity Name="AndersVoss.Switch2GamecubeBt"
             Publisher="CN=Switch2GamecubeBtTest"
-            Version="0.1.0.1" />
+            Version="0.1.0.3" />
   <Properties>
     <DisplayName>Switch 2 GameCube Bluetooth Lab</DisplayName>
     <PublisherDisplayName>Local test package</PublisherDisplayName>

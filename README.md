@@ -45,10 +45,11 @@ The native Windows hardware procedure is in
 are tracked in [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md).
 ## Diagnostic CLI status
 
-The current `s2bt` CLI exercises a deterministic fake backend only. It does not
-access, discover, pair, connect to, or send commands to physical hardware.
-Machine-readable output includes `"backend": "fake"` so simulated observations
-cannot be confused with hardware evidence.
+The portable workflow commands in the current `s2bt` CLI exercise a
+deterministic fake backend. Machine-readable output identifies that backend as
+`"fake"` so simulated observations cannot be confused with hardware evidence.
+Windows-specific diagnostic commands report their native read-only or reviewed
+experiment backend explicitly.
 
 ```bash
 cargo run --bin s2bt -- scan
@@ -65,6 +66,11 @@ cargo run --bin s2bt -- --json usb-inventory
 cargo run --bin s2bt -- --json usb-descriptor
 cargo run --bin s2bt -- --json usb-observe --seconds 10 --limit 256
 ```
+
+Windows BLE advertisement and package-identity diagnostics are read-only. The
+packaged capability host must be launched through its registered application
+identity; see `windows/package/Invoke-PackagedS2bt.ps1`. These commands never
+pair, connect, access GATT, or send controller commands.
 
 ## Security
 

@@ -122,6 +122,9 @@ pub enum Command {
         #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u64).range(1..=10))]
         seconds: u64,
     },
+    /// Report whether this process has Windows package identity.
+    #[cfg(windows)]
+    PackageStatus,
     /// Report default adapter BLE capabilities without scanning.
     #[cfg(windows)]
     BleAdapterStatus,
@@ -253,6 +256,15 @@ pub fn run(args: Args) -> CliResult {
         | Command::UsbDescribedInputProbe { .. }
         | Command::UsbSdlReferenceProbe { .. }
         | Command::UsbMotionEnableProbe { .. } => "windows_usb_reviewed_experiment",
+        #[cfg(windows)]
+        Command::BluetoothInventory
+        | Command::BluetoothScan { .. }
+        | Command::BluetoothLabStatus
+        | Command::BluetoothPairtoolScan { .. } => "windows_bluetooth_diagnostic",
+        #[cfg(windows)]
+        Command::BleScan { .. } | Command::BleAdapterStatus | Command::PackageStatus => {
+            "windows_ble_read_only"
+        }
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -364,6 +376,10 @@ enum Payload {
     BleScan {
         seconds: u64,
         advertisements: Vec<BleAdvertisementView>,
+    },
+    #[cfg(windows)]
+    PackageStatus {
+        package_identity_present: bool,
     },
     #[cfg(windows)]
     BleAdapterStatus {
@@ -560,6 +576,8 @@ fn execute(
         #[cfg(windows)]
         Command::BleScan { seconds } => ble_scan(seconds),
         #[cfg(windows)]
+        Command::PackageStatus => Ok(package_status()),
+        #[cfg(windows)]
         Command::BleAdapterStatus => ble_adapter_status(),
         #[cfg(windows)]
         Command::UsbBulkInventory => usb_bulk_inventory(),
@@ -728,6 +746,13 @@ fn ble_adapter_status() -> Result<Payload, UserSafeError> {
         low_energy_supported: capabilities.low_energy_supported,
         central_role_supported: capabilities.central_role_supported,
     })
+}
+
+#[cfg(windows)]
+fn package_status() -> Payload {
+    Payload::PackageStatus {
+        package_identity_present: crate::platform::windows::has_package_identity(),
+    }
 }
 
 #[cfg(windows)]
@@ -1151,6 +1176,15 @@ fn render_human(payload: Payload) -> String {
             seconds,
             advertisements,
         } => render_ble_scan(&mut output, seconds, advertisements),
+        #[cfg(windows)]
+        Payload::PackageStatus {
+            package_identity_present,
+        } => {
+            let _ = writeln!(
+                output,
+                "Windows package identity: {package_identity_present}"
+            );
+        }
         #[cfg(windows)]
         Payload::BleAdapterStatus {
             low_energy_supported,

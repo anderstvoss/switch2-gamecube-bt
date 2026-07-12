@@ -185,11 +185,13 @@ validates package launch, sanitized result retrieval, and watcher lifecycle;
 the next checkpoint is a prebuilt eight-second packaged scan while the user
 places BEE-021 in SYNC mode.
 
-That supervised packaged scan completed normally but returned zero
-advertisements while the user held SYNC. This is negative evidence for the
-specific scan only. Before requesting another physical attempt, audit the
-packaged-launch and watcher assumptions and identify a materially different
-discovery experiment.
+The first supervised scan was started by installed executable path, so package
+identity was not proven and its empty result is not BLE discovery evidence. The
+capability host now has a package-identity diagnostic and is launched through
+registered Windows application activation; that path proved package identity
+and completed a controller-free watcher baseline. The next physical checkpoint
+is one prebuilt eight-second scan through that verified path while the user
+places BEE-021 in SYNC mode.
 
 The previous known-device, association-endpoint, and active PairTool scans are
 preserved as negative Bluetooth Classic evidence only. They do not test BLE and

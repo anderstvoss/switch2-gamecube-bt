@@ -25,6 +25,9 @@ persistence, pairing-key handling, or virtual-HID driver code.
 
 - A package-backed BLE scan is required before interpreting an empty Windows
   advertisement watcher as a controller discovery failure.
+- Capability-host diagnostics must be launched through registered Windows
+  application activation and verify process package identity; starting an
+  executable from an installed package path is insufficient evidence.
 - Creating a test certificate, installing the MSIX package, enabling developer
   features, or removing the package requires explicit user approval.
 - The Linux BLE backend and future controller models continue to use the same

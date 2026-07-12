@@ -121,27 +121,28 @@ Conclusion: Classic discovery is not the BEE-021 route to pursue.
   added to write only sanitized CLI output to a caller-selected local file.
 - The test package must be rebuilt with an incremented package version after
   executable or manifest changes before it can replace the installed version.
-- Local package version `0.1.0.1` now contains the result-file support. Packaged
-  adapter status succeeded, and a controller-free two-second packaged BLE scan
-  completed with zero advertisements. This validates the result channel and
-  watcher lifecycle but is not controller discovery evidence.
-- A user-supervised packaged eight-second scan completed normally while the
-  user held SYNC, but returned zero advertisements. Treat this as negative
-  evidence for that specific scan only; no candidate was available to confirm,
-  and no pairing, connection, GATT access, or controller command occurred.
+- Local package version `0.1.0.3` contains result-file support, a
+  package-identity diagnostic, and a registered-activation launch helper.
+  Registered activation proved package identity; a controller-free two-second
+  scan completed with zero advertisements. This validates the result channel
+  and watcher lifecycle but is not controller discovery evidence.
+- The earlier user-supervised eight-second scan returned zero advertisements,
+  but was started by installed executable path and did not prove package
+  identity. It is retained only as an execution observation, not BLE discovery
+  evidence. No candidate was available to confirm, and no pairing, connection,
+  GATT access, or controller command occurred.
 - Test certificate, MSIX output, staging directory, and package artifacts are
   local-only and ignored. Do not commit or expose them.
 
 ## Immediate next steps
 
-1. Audit the Windows packaged-launch and BLE watcher assumptions against
-   authoritative platform behavior before interpreting the empty supervised
-   scan or requesting another physical attempt.
-2. Audit public Switch 2 BLE protocol implementations before adding a bounded,
+1. Ask the user for `ready for verified BLE SYNC`, then start the prebuilt,
+   registered-activation eight-second scan and prompt immediate SYNC press.
+2. If a sanitized Switch 2 BLE service candidate appears, stop and request user
+   confirmation before any GATT connection. Do not pair or send commands.
+3. Audit public Switch 2 BLE protocol implementations before adding a bounded,
    read-only GATT service-discovery client. Add session commands only after
    evidence, fixtures, and explicit user approval.
-3. Request another supervised SYNC attempt only after the audit identifies a
-   materially different discovery experiment.
 
 ## Package-host checkpoint
 
