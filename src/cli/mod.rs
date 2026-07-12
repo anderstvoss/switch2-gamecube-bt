@@ -14,6 +14,7 @@ use crate::{
 
 const JSON_SCHEMA_VERSION: u16 = 1;
 const MAX_LIMIT: usize = 256;
+#[cfg(windows)]
 const MAX_FRAME_LIMIT: usize = 8_192;
 #[cfg(windows)]
 const NINTENDO_VENDOR_ID: u16 = 0x057e;
@@ -227,6 +228,7 @@ fn parse_limit(value: &str) -> Result<usize, String> {
     }
 }
 
+#[cfg(windows)]
 fn parse_frame_limit(value: &str) -> Result<usize, String> {
     let limit = value
         .parse::<usize>()

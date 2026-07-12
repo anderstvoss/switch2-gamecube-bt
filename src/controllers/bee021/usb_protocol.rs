@@ -25,6 +25,10 @@ pub const SDL_QUERY_REMOVAL_REVISION: &str = "9fd3dbfc42a247b996858fe66fa835bdb1
 /// This includes SDL-labeled unknown, rumble, and grip packets. It is kept
 /// separate from [`InitializationPlan`] and must never be treated as the normal
 /// project allowlist.
+#[allow(
+    dead_code,
+    reason = "consumed only by the Windows upstream-reference adapter"
+)]
 pub(crate) fn sdl_reference_packets() -> &'static [&'static [u8]] {
     &[
         &[0x07, 0x91, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
