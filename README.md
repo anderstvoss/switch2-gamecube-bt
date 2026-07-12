@@ -38,6 +38,8 @@ The product and engineering direction is documented in
 [docs/DEVELOPMENT-SPEC.md](docs/DEVELOPMENT-SPEC.md).
 The ordered implementation roadmap is in
 [docs/IMPLEMENTATION-PLAN.md](docs/IMPLEMENTATION-PLAN.md).
+Durable sanitized implementation context is kept in
+[docs/PROJECT-MEMORY.md](docs/PROJECT-MEMORY.md).
 The native Windows hardware procedure is in
 [docs/WINDOWS-LAB.md](docs/WINDOWS-LAB.md), and evidence-backed support claims
 are tracked in [docs/SUPPORT-MATRIX.md](docs/SUPPORT-MATRIX.md).

@@ -1,6 +1,6 @@
 //! Diagnostic CLI arguments, rendering, and stable exit categories.
 
-use std::{fmt::Write as _, time::Duration};
+use std::{fmt::Write as _, path::PathBuf, time::Duration};
 
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -33,6 +33,9 @@ pub struct Args {
     /// Operation timeout in seconds.
     #[arg(long, global = true, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=300))]
     pub timeout: u64,
+    /// Write the sanitized command result to a caller-selected local file.
+    #[arg(long, global = true)]
+    pub result_file: Option<PathBuf>,
     /// Diagnostic command.
     #[command(subcommand)]
     pub command: Command,
@@ -1456,6 +1459,7 @@ mod tests {
         let human = run(Args {
             json: false,
             timeout: 1,
+            result_file: None,
             command: Command::Scan,
         });
         assert_eq!(human.exit_code, 0);
@@ -1464,6 +1468,7 @@ mod tests {
         let json = run(Args {
             json: true,
             timeout: 1,
+            result_file: None,
             command: Command::Scan,
         });
         let value: serde_json::Value = serde_json::from_str(&json.output).expect("valid JSON");
@@ -1477,6 +1482,7 @@ mod tests {
         let result = run(Args {
             json: false,
             timeout: 1,
+            result_file: None,
             command: Command::InputTest {
                 controller: "fake-bee-021".into(),
                 limit: MAX_LIMIT,
@@ -1492,6 +1498,7 @@ mod tests {
         let result = run(Args {
             json: false,
             timeout: 1,
+            result_file: None,
             command: Command::UsbInputProbe {
                 approve_reviewed_write: false,
                 seconds: 1,

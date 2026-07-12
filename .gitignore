@@ -1,5 +1,7 @@
 # Rust build artifacts
 target/
+windows/package/output/
+windows/package/certificates/
 
 # Local environment files
 .env
