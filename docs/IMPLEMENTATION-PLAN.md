@@ -173,6 +173,14 @@ require another discovery surface. Nintendo documents the SYNC gesture but not
 its timeout, so whether the timeout is controller firmware policy or a hardware
 constraint remains explicitly unverified.
 
+The host also has Microsoft's inbox `pairtool.exe` and its Bluetooth Classic
+protocol available. The project exposes this only as a sanitized lab-status
+check; it does not make the runtime driver depend on PairTool. Microsoft
+documents PairTool's endpoint mode as active discovery, unlike ordinary
+persisted endpoint enumeration. A future, separately approved hardware test
+will use it to distinguish WinRT watcher behavior from the Windows Bluetooth
+stack's active discovery capability.
+
 After requesting
 SYNC mode and confirming the selected device, add cancellable pairing,
 connection, and independent HID-readiness checks. Do not access or persist link

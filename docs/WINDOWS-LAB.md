@@ -84,6 +84,12 @@ eight-to-ten-second SYNC period; it is not a claim about the cause of that
 timeout. A scan returning no candidate must be recorded as a Windows discovery
 limitation until an independent comparison proves otherwise.
 
+`bluetooth-lab-status` checks whether the inbox Microsoft PairTool diagnostic
+and its Bluetooth Classic protocol are available. It calls only PairTool's
+protocol inventory and retains no raw output. PairTool is a lab comparison
+tool, not a dependency of the controller runtime. Its active endpoint discovery
+mode may be used only at a separate, user-coordinated SYNC checkpoint.
+
 The
 user must unplug USB, hold SYNC for at least one second, and confirm the
 sanitized candidate before pairing. The application may

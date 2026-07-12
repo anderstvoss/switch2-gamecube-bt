@@ -99,6 +99,9 @@ pub enum Command {
         #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u64).range(1..=10))]
         seconds: u64,
     },
+    /// Check the Windows active-discovery lab diagnostic without scanning.
+    #[cfg(windows)]
+    BluetoothLabStatus,
     /// Inspect BEE-021 `WinUSB` bulk endpoints without claiming the interface.
     #[cfg(windows)]
     UsbBulkInventory,
@@ -325,6 +328,11 @@ enum Payload {
         devices: Vec<BluetoothDeviceView>,
     },
     #[cfg(windows)]
+    BluetoothLabStatus {
+        pairtool_available: bool,
+        classic_bluetooth_available: bool,
+    },
+    #[cfg(windows)]
     UsbBulkInterface {
         interface_number: u8,
         input_endpoint: String,
@@ -496,6 +504,8 @@ fn execute(
         #[cfg(windows)]
         Command::BluetoothScan { seconds } => bluetooth_scan(seconds),
         #[cfg(windows)]
+        Command::BluetoothLabStatus => bluetooth_lab_status(),
+        #[cfg(windows)]
         Command::UsbBulkInventory => usb_bulk_inventory(),
         #[cfg(windows)]
         Command::UsbInputProbe {
@@ -611,6 +621,15 @@ fn bluetooth_scan(seconds: u64) -> Result<Payload, UserSafeError> {
                 enabled: device.enabled,
             })
             .collect(),
+    })
+}
+
+#[cfg(windows)]
+fn bluetooth_lab_status() -> Result<Payload, UserSafeError> {
+    let status = crate::platform::windows::inspect_pairtool()?;
+    Ok(Payload::BluetoothLabStatus {
+        pairtool_available: status.available,
+        classic_bluetooth_available: status.classic_bluetooth_available,
     })
 }
 
@@ -1017,6 +1036,15 @@ fn render_human(payload: Payload) -> String {
             render_bluetooth_scan(&mut output, seconds, devices);
         }
         #[cfg(windows)]
+        Payload::BluetoothLabStatus {
+            pairtool_available,
+            classic_bluetooth_available,
+        } => render_bluetooth_lab_status(
+            &mut output,
+            pairtool_available,
+            classic_bluetooth_available,
+        ),
+        #[cfg(windows)]
         Payload::UsbBulkInterface {
             interface_number,
             input_endpoint,
@@ -1149,6 +1177,18 @@ fn render_bluetooth_scan(output: &mut String, seconds: u64, devices: Vec<Bluetoo
             device.id_digest, device.paired, device.enabled
         );
     }
+}
+
+#[cfg(windows)]
+fn render_bluetooth_lab_status(
+    output: &mut String,
+    pairtool_available: bool,
+    classic_bluetooth_available: bool,
+) {
+    let _ = writeln!(
+        output,
+        "pairtool available: {pairtool_available} classic_bluetooth_available: {classic_bluetooth_available}"
+    );
 }
 
 #[cfg(windows)]
