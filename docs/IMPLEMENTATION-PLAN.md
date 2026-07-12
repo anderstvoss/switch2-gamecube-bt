@@ -93,6 +93,59 @@ models it as `CandidateVolatile`, so preflight still rejects it before I/O. See
 Decision 0003 for sources, uncertainty, the bounded experiment plan, and the
 mandatory approval gate.
 
+The one-packet probe received a 12-byte command reply but no input reports in
+ten seconds. This confirms the WinUSB command/reply path and rules out
+start-stream alone for the current 64-byte input mode. After a fresh USB
+reconnection, the next bounded probe will select report format `0x05` and then
+start streaming. It will stop without adding feature-output, unknown, rumble,
+grip, flash, firmware, reset, pairing, or calibration-write commands if input
+still does not appear.
+
+The fresh-session report-format plus start-stream probe received ordered 8- and
+12-byte replies but no input reports. The next bounded experiment adds the
+paired feature-output mask and enable commands ahead of those two accepted
+commands. This exhausts the four described non-rumble initialization
+candidates; failure will trigger a new evidence review rather than automatic
+use of SDL's unknown or output-related steps.
+
+The four described commands were acknowledged with reply lengths 12, 12, 8,
+and 12 bytes, but still produced no input. Custom initialization stops here:
+the remaining SDL steps are unknown, rumble-related, or grip-specific. The next
+wired baseline will use official current SDL3 directly, since SDL3 already
+provides maintained Switch 2 USB support. Project-owned USB transport remains
+useful for bounded protocol evidence, fixtures, and the future background
+service; it is not intended to replace SDL3 for ordinary wired applications.
+
+Official SDL 3.4.12 source contains the wired bulk driver, but the official
+generic Windows x64 runtime tested here enumerated only passive `If_Hid` input.
+Adding the official libusb DLL did not change that because SDL's libusb HIDAPI
+path must be compiled with `SDL_HIDAPI_LIBUSB`/`HAVE_LIBUSB`; it cannot be added
+to an existing DLL at runtime. A custom SDL build and the project's WinUSB
+transport would execute the same audited protocol. The next controlled baseline
+therefore uses the exact pinned SDL sequence through WinUSB as an isolated
+upstream-reference experiment, without promoting its unknown or output-related
+packets into the normal allowlist.
+
+The exact SDL sequence produced all ten bounded replies. SDL source then
+clarified the split transport: interface 1 bulk endpoints carry initialization
+and replies, while interface 0 HID carries state. A same-session HID check
+received continuous 64-byte report ID `0x05` input. Wired HID readiness is now
+verified. The next work is deterministic BEE-021 decoding from SDL's documented
+layout followed by a sanitized physical input matrix; no raw reports will be
+committed.
+
+The first decoded physical matrix processed 4,096 valid frames and observed all
+16 modeled buttons plus both sticks and both analog triggers. SDL's button and
+packed-axis offsets are verified for this controller. Generic axis
+normalization remains provisional until read-only factory/user calibration is
+implemented. Motion verification is the next wired checkpoint.
+
+Motion is now verified across all three acceleration and all three
+angular-velocity axes. The feature-enable value `0x27` must be reapplied after
+sensor timestamp warm-up; doing so yielded responsive motion in all 4,096
+observed frames. Scale and bias remain provisional until read-only calibration
+is incorporated.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting

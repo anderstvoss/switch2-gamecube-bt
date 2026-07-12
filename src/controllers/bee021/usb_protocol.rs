@@ -19,6 +19,45 @@ pub const SDL_FULL_SEQUENCE_REVISION: &str = "70bfdd013a804fdb15ec906d4ba18389c5
 /// SDL revision that removed four apparent console queries from that sequence.
 pub const SDL_QUERY_REMOVAL_REVISION: &str = "9fd3dbfc42a247b996858fe66fa835bdb1f03aa3";
 
+/// Returns the exact ten-packet initialization sequence in the pinned SDL
+/// revision for an isolated upstream-reference experiment.
+///
+/// This includes SDL-labeled unknown, rumble, and grip packets. It is kept
+/// separate from [`InitializationPlan`] and must never be treated as the normal
+/// project allowlist.
+#[allow(
+    dead_code,
+    reason = "consumed only by the Windows upstream-reference adapter"
+)]
+pub(crate) fn sdl_reference_packets() -> &'static [&'static [u8]] {
+    &[
+        &[0x07, 0x91, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+        &[
+            0x0c, 0x91, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x27, 0x00, 0x00, 0x00,
+        ],
+        &[0x11, 0x91, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+        &[
+            0x0a, 0x91, 0x00, 0x08, 0x00, 0x14, 0x00, 0x00, 0x01, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0x35, 0x00, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ],
+        &[
+            0x0c, 0x91, 0x00, 0x04, 0x00, 0x04, 0x00, 0x00, 0x27, 0x00, 0x00, 0x00,
+        ],
+        &[0x01, 0x91, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00],
+        &[0x01, 0x91, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+        &[
+            0x08, 0x91, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+        ],
+        &[
+            0x03, 0x91, 0x00, 0x0a, 0x00, 0x04, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00,
+        ],
+        &[
+            0x03, 0x91, 0x00, 0x0d, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff,
+        ],
+    ]
+}
+
 /// Persistence classification applied before any command may be serialized.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SafetyClass {
@@ -48,7 +87,7 @@ pub enum ClassifiedCommand {
 }
 
 impl ClassifiedCommand {
-    fn packet(self) -> &'static [u8] {
+    pub(crate) fn packet(self) -> &'static [u8] {
         match self {
             Self::SetFeatureOutputMask => &[
                 0x0c, 0x91, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x27, 0x00, 0x00, 0x00,
@@ -145,6 +184,52 @@ impl InitializationPlan {
                 command: ClassifiedCommand::StartInputStream,
                 safety_class: SafetyClass::CandidateVolatile,
             }]),
+        }
+    }
+
+    /// Returns the next-smallest input probe supported by SDL history.
+    ///
+    /// This selects the 64-byte report format before starting the stream. Both
+    /// writes remain candidate-volatile and normal plan execution rejects them.
+    #[must_use]
+    pub fn candidate_report5_input_probe() -> Self {
+        Self {
+            steps: Box::new([
+                InitializationStep::Command {
+                    command: ClassifiedCommand::SetInputReportFormat,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::StartInputStream,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+            ]),
+        }
+    }
+
+    /// Returns the four-command probe containing every described non-rumble
+    /// initialization candidate.
+    #[must_use]
+    pub fn candidate_described_input_probe() -> Self {
+        Self {
+            steps: Box::new([
+                InitializationStep::Command {
+                    command: ClassifiedCommand::SetFeatureOutputMask,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::EnableFeatureOutputChannels,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::SetInputReportFormat,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::StartInputStream,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+            ]),
         }
     }
 
@@ -340,6 +425,57 @@ mod tests {
             ))
         );
         assert!(transport.sent.is_empty());
+    }
+
+    #[test]
+    fn report5_input_probe_preserves_order_and_remains_non_executable() {
+        let plan = InitializationPlan::candidate_report5_input_probe();
+        assert_eq!(
+            plan.steps(),
+            [
+                InitializationStep::Command {
+                    command: ClassifiedCommand::SetInputReportFormat,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::StartInputStream,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+            ]
+        );
+        let mut transport = MockTransport::default();
+        assert!(plan.execute(&mut transport).is_err());
+        assert!(transport.sent.is_empty());
+    }
+
+    #[test]
+    fn described_input_probe_excludes_unknown_rumble_and_grip_steps() {
+        let plan = InitializationPlan::candidate_described_input_probe();
+        assert_eq!(plan.steps().len(), 4);
+        assert!(plan.steps().iter().all(|step| matches!(
+            step,
+            InitializationStep::Command {
+                safety_class: SafetyClass::CandidateVolatile,
+                ..
+            }
+        )));
+        assert!(plan.blockers().is_empty());
+        let mut transport = MockTransport::default();
+        assert!(plan.execute(&mut transport).is_err());
+        assert!(transport.sent.is_empty());
+    }
+
+    #[test]
+    fn sdl_reference_sequence_is_fixed_bounded_and_separate() {
+        let packets = sdl_reference_packets();
+        assert_eq!(packets.len(), 10);
+        assert!(
+            packets
+                .iter()
+                .all(|packet| !packet.is_empty() && packet.len() <= MAX_PACKET_LENGTH)
+        );
+        assert_eq!(packets[0], [0x07, 0x91, 0x00, 0x01, 0, 0, 0, 0]);
+        assert_eq!(packets[9], ClassifiedCommand::StartInputStream.packet());
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Read-only Windows HID inventory and bounded observation.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     time::{Duration, Instant},
 };
 
@@ -9,6 +9,10 @@ use hidapi::{BusType, HidApi};
 use sha2::{Digest, Sha256};
 
 use crate::domain::{ErrorCategory, UserSafeError};
+use crate::{
+    controllers::bee021::wired::decode_wired_report,
+    protocol::{Axis, Button},
+};
 
 const MAX_LABEL_LENGTH: usize = 128;
 
@@ -51,6 +55,23 @@ pub struct UsbInputObservation {
     pub length: usize,
     /// Number of reports observed in this bucket.
     pub count: usize,
+}
+
+/// Sanitized aggregate of decoded BEE-021 wired input.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UsbDecodedInputObservation {
+    /// Every button observed in the pressed state.
+    pub buttons_seen: BTreeSet<Button>,
+    /// Minimum and maximum normalized value observed for each axis.
+    pub axis_ranges: BTreeMap<Axis, (i16, i16)>,
+    /// Number of valid state frames decoded.
+    pub frames: usize,
+    /// Number of motion samples decoded.
+    pub motion_samples: usize,
+    /// Observed acceleration minimum and maximum for X, Y, and Z.
+    pub acceleration_ranges: Option<[(f32, f32); 3]>,
+    /// Observed angular-velocity minimum and maximum for X, Y, and Z.
+    pub angular_velocity_ranges: Option<[(f32, f32); 3]>,
 }
 
 /// Enumerates matching HID interfaces without opening a device handle.
@@ -171,6 +192,77 @@ pub fn observe_usb_input(
         .collect())
 }
 
+/// Reads and decodes bounded BEE-021 input without exposing raw reports.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error if HID access fails or a received report does
+/// not match the verified BEE-021 wired format.
+pub fn observe_decoded_usb_input(
+    vendor_id: u16,
+    product_id: u16,
+    duration: Duration,
+    limit: usize,
+) -> Result<UsbDecodedInputObservation, UserSafeError> {
+    let api = HidApi::new().map_err(|_| platform_error("Windows HID initialization failed"))?;
+    let device = open_unique_usb_device(&api, vendor_id, product_id)?;
+    let deadline = Instant::now() + duration;
+    let mut report = vec![0_u8; crate::protocol::MAX_REPORT_SIZE];
+    let mut buttons_seen = BTreeSet::new();
+    let mut axis_ranges = BTreeMap::<Axis, (i16, i16)>::new();
+    let mut frames = 0;
+    let mut motion_samples = 0;
+    let mut acceleration_ranges = None;
+    let mut angular_velocity_ranges = None;
+
+    while frames < limit && Instant::now() < deadline {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let timeout_ms = remaining.as_millis().clamp(1, 100) as i32;
+        let length = device
+            .read_timeout(&mut report, timeout_ms)
+            .map_err(|_| platform_error("USB HID decoded input observation failed"))?;
+        if length == 0 {
+            continue;
+        }
+        let frame = decode_wired_report(&report[..length])
+            .map_err(|_| invalid_data("USB HID report did not match the verified wired format"))?;
+        buttons_seen.extend(frame.buttons);
+        for (axis, value) in frame.axes {
+            let range = axis_ranges.entry(axis).or_insert((value, value));
+            range.0 = range.0.min(value);
+            range.1 = range.1.max(value);
+        }
+        for motion in frame.motion {
+            update_vector_ranges(&mut acceleration_ranges, motion.acceleration);
+            update_vector_ranges(&mut angular_velocity_ranges, motion.angular_velocity);
+            motion_samples += 1;
+        }
+        report[..length].fill(0);
+        frames += 1;
+    }
+
+    Ok(UsbDecodedInputObservation {
+        buttons_seen,
+        axis_ranges,
+        frames,
+        motion_samples,
+        acceleration_ranges,
+        angular_velocity_ranges,
+    })
+}
+
+fn update_vector_ranges(ranges: &mut Option<[(f32, f32); 3]>, values: [f32; 3]) {
+    let ranges = ranges.get_or_insert([
+        (values[0], values[0]),
+        (values[1], values[1]),
+        (values[2], values[2]),
+    ]);
+    for (range, value) in ranges.iter_mut().zip(values) {
+        range.0 = range.0.min(value);
+        range.1 = range.1.max(value);
+    }
+}
+
 fn record_report(buckets: &mut BTreeMap<(u8, usize), usize>, report: &[u8]) {
     if let Some(report_id) = report.first() {
         *buckets.entry((*report_id, report.len())).or_default() += 1;
@@ -202,6 +294,10 @@ fn open_unique_usb_device(
 
 fn platform_error(message: &'static str) -> UserSafeError {
     UserSafeError::new(ErrorCategory::Platform, message)
+}
+
+fn invalid_data(message: &'static str) -> UserSafeError {
+    UserSafeError::new(ErrorCategory::InvalidData, message)
 }
 
 fn sanitize_label(value: Option<&str>) -> Option<String> {

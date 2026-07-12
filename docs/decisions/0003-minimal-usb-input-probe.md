@@ -73,3 +73,54 @@ support session-volatility and input-enablement claims for one packet; it would
 not validate the remaining sequence, calibration, output features, or
 Bluetooth behavior. A failed probe would establish only that more setup is
 needed, not that the whole SDL sequence is safe.
+
+## Observed result
+
+The approved probe was run once on Windows 11. The controller returned a
+12-byte reply to the single start-stream command, but produced no input reports
+during the bounded ten-second observation. The interface was then released
+without another command. See
+`observations/2026-07-11-windows-usb-start-stream-probe.md`.
+
+This validates the host transport and shows the one-packet candidate is
+insufficient. The next smallest historically supported probe is report-format
+`0x05` followed by start-stream on a freshly reconnected USB session. That
+experiment remains limited to those two packets and must stop on failure.
+
+The two-command experiment was then run on a freshly reconnected session.
+Report-format `0x05` returned an 8-byte reply and start-stream returned a
+12-byte reply, but no input reports arrived in ten seconds. See
+`observations/2026-07-11-windows-usb-report5-probe.md`.
+
+The next smallest reviewed probe adds the paired feature-output mask and enable
+commands before report-format and start-stream. These are the remaining two
+described, non-rumble commands in the modeled SDL sequence. They remain
+candidate-volatile; unknown, rumble, grip, flash, firmware, reset, pairing, and
+calibration-write commands remain excluded.
+
+## Transport correction and successful baseline
+
+The exact pinned ten-packet SDL sequence was later run as an isolated reference
+experiment. Every packet received a bounded reply. No subsequent packets
+appeared on bulk IN, but source review showed that SDL reads state through the
+HID interface after using bulk only for command replies. A same-session HID
+observation immediately received continuous 64-byte report ID `0x05` input.
+See `observations/2026-07-11-windows-usb-sdl-sequence.md`.
+
+The earlier one-, two-, and four-command observations remain accurate about
+bulk replies, but their lack of post-command bulk reports did not test the
+actual state channel. They must not be used to conclude those subsets cannot
+enable HID input. Future subset experiments, if needed, must observe interface
+0 HID after releasing interface 1.
+
+The four-command experiment was run after another USB reconnect. All commands
+were acknowledged with reply lengths 12, 12, 8, and 12 bytes, but no input
+reports arrived. See
+`observations/2026-07-11-windows-usb-described-probe.md`.
+
+This exhausts the described non-rumble candidates. Do not escalate the custom
+initializer to SDL's remaining unknown, rumble-related, or grip commands.
+Instead, validate wired behavior through official current SDL3 and treat its
+driver as the maintained wired reference. Project-owned USB work remains a
+controlled evidence and fixture path for Bluetooth decoding and the Windows
+service, not a replacement for SDL3's application-facing wired support.

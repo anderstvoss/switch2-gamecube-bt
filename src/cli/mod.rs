@@ -15,6 +15,8 @@ use crate::{
 const JSON_SCHEMA_VERSION: u16 = 1;
 const MAX_LIMIT: usize = 256;
 #[cfg(windows)]
+const MAX_FRAME_LIMIT: usize = 8_192;
+#[cfg(windows)]
 const NINTENDO_VENDOR_ID: u16 = 0x057e;
 #[cfg(windows)]
 const BEE_021_USB_PRODUCT_ID: u16 = 0x2073;
@@ -90,6 +92,65 @@ pub enum Command {
     /// Inspect BEE-021 `WinUSB` bulk endpoints without claiming the interface.
     #[cfg(windows)]
     UsbBulkInventory,
+    /// Run the reviewed one-packet BEE-021 input probe.
+    #[cfg(windows)]
+    UsbInputProbe {
+        /// Confirm the reviewed host-to-controller start-stream write.
+        #[arg(long)]
+        approve_reviewed_write: bool,
+        /// Bounded input observation duration in seconds.
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+        /// Maximum number of report metadata entries to retain.
+        #[arg(long, default_value_t = 64, value_parser = parse_limit)]
+        limit: usize,
+    },
+    /// Run the reviewed report-format `0x05` plus start-stream probe.
+    #[cfg(windows)]
+    UsbReport5InputProbe {
+        /// Confirm both reviewed host-to-controller writes.
+        #[arg(long)]
+        approve_reviewed_writes: bool,
+        /// Bounded input observation duration in seconds.
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+        /// Maximum number of report metadata entries to retain.
+        #[arg(long, default_value_t = 64, value_parser = parse_limit)]
+        limit: usize,
+    },
+    /// Run all four reviewed, described non-rumble input commands.
+    #[cfg(windows)]
+    UsbDescribedInputProbe {
+        /// Confirm all four reviewed host-to-controller writes.
+        #[arg(long)]
+        approve_reviewed_writes: bool,
+        /// Bounded input observation duration in seconds.
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+        /// Maximum number of report metadata entries to retain.
+        #[arg(long, default_value_t = 64, value_parser = parse_limit)]
+        limit: usize,
+    },
+    /// Run the exact pinned SDL sequence as an isolated reference experiment.
+    #[cfg(windows)]
+    UsbSdlReferenceProbe {
+        /// Confirm the exact ten-packet SDL reference sequence.
+        #[arg(long)]
+        approve_exact_sdl_sequence: bool,
+        /// Bounded input observation duration in seconds.
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+        /// Maximum number of report metadata entries to retain.
+        #[arg(long, default_value_t = 64, value_parser = parse_limit)]
+        limit: usize,
+    },
+    /// Reapply the reviewed motion feature enable after sensor warm-up.
+    #[cfg(windows)]
+    UsbMotionEnableProbe {
+        /// Confirm the reviewed feature-enable write.
+        #[arg(long)]
+        approve_reviewed_write: bool,
+    },
     /// Fingerprint the BEE-021 HID descriptor without exposing its bytes.
     #[cfg(windows)]
     UsbDescriptor,
@@ -103,6 +164,16 @@ pub enum Command {
         #[arg(long, default_value_t = 256, value_parser = parse_limit)]
         limit: usize,
     },
+    /// Exercise decoded BEE-021 wired input without retaining raw reports.
+    #[cfg(windows)]
+    UsbDecodedInputTest {
+        /// Bounded input exercise duration in seconds.
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u64).range(1..=60))]
+        seconds: u64,
+        /// Maximum number of frames to decode.
+        #[arg(long, default_value_t = 4_096, value_parser = parse_frame_limit)]
+        limit: usize,
+    },
 }
 
 /// Runs the CLI against the deterministic backend.
@@ -113,7 +184,14 @@ pub fn run(args: Args) -> CliResult {
         Command::UsbInventory
         | Command::UsbBulkInventory
         | Command::UsbDescriptor
-        | Command::UsbObserve { .. } => "windows_usb_read_only",
+        | Command::UsbObserve { .. }
+        | Command::UsbDecodedInputTest { .. } => "windows_usb_read_only",
+        #[cfg(windows)]
+        Command::UsbInputProbe { .. }
+        | Command::UsbReport5InputProbe { .. }
+        | Command::UsbDescribedInputProbe { .. }
+        | Command::UsbSdlReferenceProbe { .. }
+        | Command::UsbMotionEnableProbe { .. } => "windows_usb_reviewed_experiment",
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -147,6 +225,20 @@ fn parse_limit(value: &str) -> Result<usize, String> {
         Ok(limit)
     } else {
         Err(format!("limit must be between 1 and {MAX_LIMIT}"))
+    }
+}
+
+#[cfg(windows)]
+fn parse_frame_limit(value: &str) -> Result<usize, String> {
+    let limit = value
+        .parse::<usize>()
+        .map_err(|_| "frame limit must be an integer".to_owned())?;
+    if (1..=MAX_FRAME_LIMIT).contains(&limit) {
+        Ok(limit)
+    } else {
+        Err(format!(
+            "frame limit must be between 1 and {MAX_FRAME_LIMIT}"
+        ))
     }
 }
 
@@ -204,6 +296,20 @@ enum Payload {
     UsbInputMetadata {
         items: Vec<UsbInputMetadataView>,
     },
+    #[cfg(windows)]
+    UsbInputProbe {
+        command_reply_lengths: Vec<usize>,
+        reports: Vec<UsbInputMetadataView>,
+    },
+    #[cfg(windows)]
+    UsbDecodedInput {
+        buttons_seen: Vec<String>,
+        axis_ranges: Vec<AxisRangeView>,
+        frames: usize,
+        motion_samples: usize,
+        acceleration_ranges: Vec<MotionRangeView>,
+        angular_velocity_ranges: Vec<MotionRangeView>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -252,6 +358,22 @@ struct UsbInputMetadataView {
     report_id: String,
     length: usize,
     count: usize,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
+struct AxisRangeView {
+    axis: String,
+    minimum: i16,
+    maximum: i16,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
+struct MotionRangeView {
+    axis: &'static str,
+    minimum: f32,
+    maximum: f32,
 }
 
 fn execute(
@@ -307,53 +429,43 @@ fn execute(
             privacy: "sanitized",
         }),
         #[cfg(windows)]
-        Command::UsbInventory => Ok(Payload::UsbInterfaces {
-            items: crate::platform::windows::enumerate_usb_hid(
-                NINTENDO_VENDOR_ID,
-                Some(BEE_021_USB_PRODUCT_ID),
-            )?
-            .into_iter()
-            .map(|interface| UsbInterfaceView {
-                vendor_id: format!("{:04x}", interface.vendor_id),
-                product_id: format!("{:04x}", interface.product_id),
-                usage_page: format!("{:04x}", interface.usage_page),
-                usage: format!("{:04x}", interface.usage),
-                interface_number: interface.interface_number,
-                product_label: interface.product_label,
-                manufacturer_label: interface.manufacturer_label,
-                bus_type: interface.bus_type,
-            })
-            .collect(),
-        }),
+        Command::UsbInventory => usb_inventory(),
         #[cfg(windows)]
         Command::UsbBulkInventory => usb_bulk_inventory(),
         #[cfg(windows)]
-        Command::UsbDescriptor => {
-            let descriptor = crate::platform::windows::inspect_usb_descriptor(
-                NINTENDO_VENDOR_ID,
-                BEE_021_USB_PRODUCT_ID,
-            )?;
-            Ok(Payload::UsbDescriptor {
-                length: descriptor.length,
-                sha256: descriptor.sha256,
-            })
-        }
+        Command::UsbInputProbe {
+            approve_reviewed_write,
+            seconds,
+            limit,
+        } => usb_input_probe(approve_reviewed_write, seconds, limit),
         #[cfg(windows)]
-        Command::UsbObserve { seconds, limit } => Ok(Payload::UsbInputMetadata {
-            items: crate::platform::windows::observe_usb_input(
-                NINTENDO_VENDOR_ID,
-                BEE_021_USB_PRODUCT_ID,
-                Duration::from_secs(seconds),
-                limit,
-            )?
-            .into_iter()
-            .map(|observation| UsbInputMetadataView {
-                report_id: format!("{:02x}", observation.report_id),
-                length: observation.length,
-                count: observation.count,
-            })
-            .collect(),
-        }),
+        Command::UsbReport5InputProbe {
+            approve_reviewed_writes,
+            seconds,
+            limit,
+        } => usb_report5_input_probe(approve_reviewed_writes, seconds, limit),
+        #[cfg(windows)]
+        Command::UsbDescribedInputProbe {
+            approve_reviewed_writes,
+            seconds,
+            limit,
+        } => usb_described_input_probe(approve_reviewed_writes, seconds, limit),
+        #[cfg(windows)]
+        Command::UsbSdlReferenceProbe {
+            approve_exact_sdl_sequence,
+            seconds,
+            limit,
+        } => usb_sdl_reference_probe(approve_exact_sdl_sequence, seconds, limit),
+        #[cfg(windows)]
+        Command::UsbMotionEnableProbe {
+            approve_reviewed_write,
+        } => usb_motion_enable_probe(approve_reviewed_write),
+        #[cfg(windows)]
+        Command::UsbDescriptor => usb_descriptor(),
+        #[cfg(windows)]
+        Command::UsbObserve { seconds, limit } => usb_observe(seconds, limit),
+        #[cfg(windows)]
+        Command::UsbDecodedInputTest { seconds, limit } => usb_decoded_input(seconds, limit),
     }
 }
 
@@ -371,6 +483,223 @@ fn usb_bulk_inventory() -> Result<Payload, UserSafeError> {
         input_max_packet_size: layout.input_max_packet_size,
         output_max_packet_size: layout.output_max_packet_size,
     })
+}
+
+#[cfg(windows)]
+fn usb_inventory() -> Result<Payload, UserSafeError> {
+    Ok(Payload::UsbInterfaces {
+        items: crate::platform::windows::enumerate_usb_hid(
+            NINTENDO_VENDOR_ID,
+            Some(BEE_021_USB_PRODUCT_ID),
+        )?
+        .into_iter()
+        .map(|interface| UsbInterfaceView {
+            vendor_id: format!("{:04x}", interface.vendor_id),
+            product_id: format!("{:04x}", interface.product_id),
+            usage_page: format!("{:04x}", interface.usage_page),
+            usage: format!("{:04x}", interface.usage),
+            interface_number: interface.interface_number,
+            product_label: interface.product_label,
+            manufacturer_label: interface.manufacturer_label,
+            bus_type: interface.bus_type,
+        })
+        .collect(),
+    })
+}
+
+#[cfg(windows)]
+fn usb_descriptor() -> Result<Payload, UserSafeError> {
+    let descriptor = crate::platform::windows::inspect_usb_descriptor(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+    )?;
+    Ok(Payload::UsbDescriptor {
+        length: descriptor.length,
+        sha256: descriptor.sha256,
+    })
+}
+
+#[cfg(windows)]
+fn usb_input_probe(approved: bool, seconds: u64, limit: usize) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the reviewed USB write requires --approve-reviewed-write",
+        ));
+    }
+    let observation = crate::platform::windows::run_minimal_input_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_report5_input_probe(
+    approved: bool,
+    seconds: u64,
+    limit: usize,
+) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the two reviewed USB writes require --approve-reviewed-writes",
+        ));
+    }
+    let observation = crate::platform::windows::run_report5_input_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_described_input_probe(
+    approved: bool,
+    seconds: u64,
+    limit: usize,
+) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the four reviewed USB writes require --approve-reviewed-writes",
+        ));
+    }
+    let observation = crate::platform::windows::run_described_input_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_sdl_reference_probe(
+    approved: bool,
+    seconds: u64,
+    limit: usize,
+) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the exact SDL sequence requires --approve-exact-sdl-sequence",
+        ));
+    }
+    let observation = crate::platform::windows::run_sdl_reference_input_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_motion_enable_probe(approved: bool) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the reviewed motion write requires --approve-reviewed-write",
+        ));
+    }
+    let observation = crate::platform::windows::run_motion_enable_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_probe_payload(
+    observation: crate::platform::windows::MinimalInputProbeObservation,
+) -> Payload {
+    Payload::UsbInputProbe {
+        command_reply_lengths: observation.command_reply_lengths,
+        reports: observation
+            .reports
+            .into_iter()
+            .map(|report| UsbInputMetadataView {
+                report_id: format!("{:02x}", report.report_id),
+                length: report.length,
+                count: 1,
+            })
+            .collect(),
+    }
+}
+
+#[cfg(windows)]
+fn usb_observe(seconds: u64, limit: usize) -> Result<Payload, UserSafeError> {
+    Ok(Payload::UsbInputMetadata {
+        items: crate::platform::windows::observe_usb_input(
+            NINTENDO_VENDOR_ID,
+            BEE_021_USB_PRODUCT_ID,
+            Duration::from_secs(seconds),
+            limit,
+        )?
+        .into_iter()
+        .map(|observation| UsbInputMetadataView {
+            report_id: format!("{:02x}", observation.report_id),
+            length: observation.length,
+            count: observation.count,
+        })
+        .collect(),
+    })
+}
+
+#[cfg(windows)]
+fn usb_decoded_input(seconds: u64, limit: usize) -> Result<Payload, UserSafeError> {
+    let observation = crate::platform::windows::observe_decoded_usb_input(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(Payload::UsbDecodedInput {
+        buttons_seen: observation
+            .buttons_seen
+            .into_iter()
+            .map(|button| format!("{button:?}"))
+            .collect(),
+        axis_ranges: observation
+            .axis_ranges
+            .into_iter()
+            .map(|(axis, (minimum, maximum))| AxisRangeView {
+                axis: format!("{axis:?}"),
+                minimum,
+                maximum,
+            })
+            .collect(),
+        frames: observation.frames,
+        motion_samples: observation.motion_samples,
+        acceleration_ranges: motion_range_views(observation.acceleration_ranges),
+        angular_velocity_ranges: motion_range_views(observation.angular_velocity_ranges),
+    })
+}
+
+#[cfg(windows)]
+fn motion_range_views(ranges: Option<[(f32, f32); 3]>) -> Vec<MotionRangeView> {
+    let Some(ranges) = ranges else {
+        return Vec::new();
+    };
+    ["x", "y", "z"]
+        .into_iter()
+        .zip(ranges)
+        .map(|(axis, (minimum, maximum))| MotionRangeView {
+            axis,
+            minimum,
+            maximum,
+        })
+        .collect()
 }
 
 fn parse_id(value: String) -> Result<ControllerId, UserSafeError> {
@@ -494,24 +823,7 @@ fn render_human(payload: Payload) -> String {
             }
         }
         #[cfg(windows)]
-        Payload::UsbInterfaces { items } => {
-            for item in items {
-                let label = item
-                    .product_label
-                    .as_deref()
-                    .unwrap_or("unlabeled HID interface");
-                let _ = writeln!(
-                    output,
-                    "{label}: {:04}:{:04} usage={}:{} interface={} bus={}",
-                    item.vendor_id,
-                    item.product_id,
-                    item.usage_page,
-                    item.usage,
-                    item.interface_number,
-                    item.bus_type
-                );
-            }
-        }
+        Payload::UsbInterfaces { items } => render_usb_interfaces(&mut output, items),
         #[cfg(windows)]
         Payload::UsbBulkInterface {
             interface_number,
@@ -519,28 +831,148 @@ fn render_human(payload: Payload) -> String {
             output_endpoint,
             input_max_packet_size,
             output_max_packet_size,
-        } => {
-            let _ = writeln!(
-                output,
-                "interface {interface_number}: bulk-in=0x{input_endpoint} ({input_max_packet_size} bytes) bulk-out=0x{output_endpoint} ({output_max_packet_size} bytes)"
-            );
-        }
+        } => render_usb_bulk_interface(
+            &mut output,
+            interface_number,
+            &input_endpoint,
+            &output_endpoint,
+            input_max_packet_size,
+            output_max_packet_size,
+        ),
         #[cfg(windows)]
         Payload::UsbDescriptor { length, sha256 } => {
-            let _ = writeln!(output, "descriptor: {length} bytes sha256={sha256}");
+            render_usb_descriptor(&mut output, length, &sha256);
         }
         #[cfg(windows)]
-        Payload::UsbInputMetadata { items } => {
-            for item in items {
-                let _ = writeln!(
-                    output,
-                    "report 0x{}: {} bytes, {} observed",
-                    item.report_id, item.length, item.count
-                );
-            }
-        }
+        Payload::UsbInputMetadata { items } => render_usb_input_metadata(&mut output, items),
+        #[cfg(windows)]
+        Payload::UsbInputProbe {
+            command_reply_lengths,
+            reports,
+        } => render_usb_input_probe(&mut output, command_reply_lengths, reports),
+        #[cfg(windows)]
+        Payload::UsbDecodedInput {
+            buttons_seen,
+            axis_ranges,
+            frames,
+            motion_samples,
+            acceleration_ranges,
+            angular_velocity_ranges,
+        } => render_usb_decoded_input(
+            &mut output,
+            &buttons_seen,
+            axis_ranges,
+            frames,
+            motion_samples,
+            acceleration_ranges,
+            angular_velocity_ranges,
+        ),
     }
     output
+}
+
+#[cfg(windows)]
+fn render_usb_interfaces(output: &mut String, items: Vec<UsbInterfaceView>) {
+    for item in items {
+        let label = item
+            .product_label
+            .as_deref()
+            .unwrap_or("unlabeled HID interface");
+        let _ = writeln!(
+            output,
+            "{label}: {:04}:{:04} usage={}:{} interface={} bus={}",
+            item.vendor_id,
+            item.product_id,
+            item.usage_page,
+            item.usage,
+            item.interface_number,
+            item.bus_type
+        );
+    }
+}
+
+#[cfg(windows)]
+fn render_usb_bulk_interface(
+    output: &mut String,
+    interface_number: u8,
+    input_endpoint: &str,
+    output_endpoint: &str,
+    input_max_packet_size: usize,
+    output_max_packet_size: usize,
+) {
+    let _ = writeln!(
+        output,
+        "interface {interface_number}: bulk-in=0x{input_endpoint} ({input_max_packet_size} bytes) bulk-out=0x{output_endpoint} ({output_max_packet_size} bytes)"
+    );
+}
+
+#[cfg(windows)]
+fn render_usb_descriptor(output: &mut String, length: usize, sha256: &str) {
+    let _ = writeln!(output, "descriptor: {length} bytes sha256={sha256}");
+}
+
+#[cfg(windows)]
+fn render_usb_input_metadata(output: &mut String, items: Vec<UsbInputMetadataView>) {
+    for item in items {
+        let _ = writeln!(
+            output,
+            "report 0x{}: {} bytes, {} observed",
+            item.report_id, item.length, item.count
+        );
+    }
+}
+
+#[cfg(windows)]
+fn render_usb_input_probe(
+    output: &mut String,
+    command_reply_lengths: Vec<usize>,
+    reports: Vec<UsbInputMetadataView>,
+) {
+    for (index, length) in command_reply_lengths.into_iter().enumerate() {
+        let _ = writeln!(output, "command {index} reply: {length} bytes");
+    }
+    for report in reports {
+        let _ = writeln!(
+            output,
+            "report 0x{}: {} bytes",
+            report.report_id, report.length
+        );
+    }
+}
+
+#[cfg(windows)]
+fn render_usb_decoded_input(
+    output: &mut String,
+    buttons_seen: &[String],
+    axis_ranges: Vec<AxisRangeView>,
+    frames: usize,
+    motion_samples: usize,
+    acceleration_ranges: Vec<MotionRangeView>,
+    angular_velocity_ranges: Vec<MotionRangeView>,
+) {
+    let _ = writeln!(output, "frames: {frames}");
+    let _ = writeln!(output, "buttons seen: {}", buttons_seen.join(", "));
+    for range in axis_ranges {
+        let _ = writeln!(
+            output,
+            "{}: {}..{}",
+            range.axis, range.minimum, range.maximum
+        );
+    }
+    let _ = writeln!(output, "motion samples: {motion_samples}");
+    render_motion_ranges(output, "acceleration", acceleration_ranges);
+    render_motion_ranges(output, "angular velocity", angular_velocity_ranges);
+}
+
+#[cfg(windows)]
+fn render_motion_ranges(output: &mut String, label: &str, ranges: Vec<MotionRangeView>) {
+    for range in ranges {
+        let _ = writeln!(
+            output,
+            "{label} {}: {:.3}..{:.3}",
+            range.axis, range.minimum, range.maximum
+        );
+    }
 }
 
 fn render_error(json: bool, backend: &'static str, error: &UserSafeError) -> String {
@@ -610,5 +1042,21 @@ mod tests {
         });
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.output.lines().count(), 4);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn usb_input_probe_requires_explicit_write_confirmation() {
+        let result = run(Args {
+            json: false,
+            timeout: 1,
+            command: Command::UsbInputProbe {
+                approve_reviewed_write: false,
+                seconds: 1,
+                limit: 1,
+            },
+        });
+        assert_eq!(result.exit_code, 4);
+        assert!(result.output.contains("--approve-reviewed-write"));
     }
 }

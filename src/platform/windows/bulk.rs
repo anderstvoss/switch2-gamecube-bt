@@ -1,6 +1,7 @@
 //! Read-only Windows USB bulk-interface inventory and bounded transport seam.
 
 use std::time::Duration;
+use std::time::Instant;
 
 use nusb::{
     Endpoint, Interface, MaybeFuture,
@@ -9,19 +10,13 @@ use nusb::{
 };
 
 use crate::{
-    controllers::bee021::usb_protocol::{BulkTransport, TransportError},
+    controllers::bee021::usb_protocol::{
+        BulkTransport, ClassifiedCommand, TransportError, sdl_reference_packets,
+    },
     domain::{ErrorCategory, UserSafeError},
 };
 
-#[allow(
-    dead_code,
-    reason = "live transport remains gated until a later checkpoint"
-)]
 const MAX_TRANSFER_LENGTH: usize = 64;
-#[allow(
-    dead_code,
-    reason = "live transport remains gated until a later checkpoint"
-)]
 const ENDPOINT_DIRECTION_MASK: u8 = 0x80;
 
 /// Sanitized layout of a USB interface's bulk endpoints.
@@ -39,6 +34,24 @@ pub struct BulkEndpointLayout {
     pub output_max_packet_size: usize,
 }
 
+/// Sanitized metadata for one bulk input report.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BulkReportObservation {
+    /// First report byte, interpreted as the report identifier.
+    pub report_id: u8,
+    /// Number of bytes received.
+    pub length: usize,
+}
+
+/// Sanitized outcome of the explicitly approved start-stream probe.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MinimalInputProbeObservation {
+    /// Length of each command reply in command order.
+    pub command_reply_lengths: Vec<usize>,
+    /// Bounded report metadata observed after the reply.
+    pub reports: Vec<BulkReportObservation>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct EndpointCandidate {
     address: u8,
@@ -52,15 +65,32 @@ struct EndpointCandidate {
 /// The interface field keeps the exclusive claim alive for the lifetime of
 /// both endpoints. This type is deliberately not exported from the Windows
 /// platform module and has no CLI construction path.
-#[allow(
-    dead_code,
-    reason = "live transport remains gated until a later checkpoint"
-)]
 pub(super) struct WinUsbBulkTransport {
     _interface: Interface,
     input: Endpoint<Bulk, In>,
     output: Endpoint<Bulk, Out>,
     timeout: Duration,
+}
+
+impl WinUsbBulkTransport {
+    fn receive_report_metadata(&mut self) -> Result<Option<BulkReportObservation>, TransportError> {
+        let completed = match self
+            .input
+            .transfer_blocking(Buffer::new(MAX_TRANSFER_LENGTH), self.timeout)
+            .into_result()
+        {
+            Ok(completed) => completed,
+            Err(TransferError::Cancelled) => return Ok(None),
+            Err(error) => return Err(map_transfer_error(error)),
+        };
+        let Some(report_id) = completed.first().copied() else {
+            return Err(TransportError::TransferFailed);
+        };
+        Ok(Some(BulkReportObservation {
+            report_id,
+            length: completed.len(),
+        }))
+    }
 }
 
 impl BulkTransport for WinUsbBulkTransport {
@@ -98,10 +128,6 @@ impl BulkTransport for WinUsbBulkTransport {
 /// This factory is intentionally private to the Windows platform adapter and
 /// is not currently called by production code. It must not be exposed through
 /// the CLI before the live initialization safety gate is approved.
-#[allow(
-    dead_code,
-    reason = "live transport remains gated until a later checkpoint"
-)]
 pub(super) fn open_bulk_transport(
     vendor_id: u16,
     product_id: u16,
@@ -144,10 +170,197 @@ pub(super) fn open_bulk_transport(
     })
 }
 
-#[allow(
-    dead_code,
-    reason = "live transport remains gated until a later checkpoint"
-)]
+/// Runs the explicitly approved one-packet BEE-021 start-stream experiment.
+///
+/// The function sends exactly one allowlisted command, records only sanitized
+/// reply/report metadata, and drops the claimed interface on return. It never
+/// sends calibration, firmware, reset, pairing, rumble, LED, or cleanup data.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error if identity/endpoint validation, claiming, the
+/// single command transfer, or bounded report observation fails.
+pub fn run_minimal_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_input_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        &[ClassifiedCommand::StartInputStream],
+    )
+}
+
+/// Runs the approved report-format `0x05` plus start-stream experiment.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error under the same identity, endpoint, transfer,
+/// and observation bounds as [`run_minimal_input_probe`].
+pub fn run_report5_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_input_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        &[
+            ClassifiedCommand::SetInputReportFormat,
+            ClassifiedCommand::StartInputStream,
+        ],
+    )
+}
+
+/// Runs the approved four-command described, non-rumble input experiment.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error under the same identity, endpoint, transfer,
+/// and observation bounds as [`run_minimal_input_probe`].
+pub fn run_described_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_input_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        &[
+            ClassifiedCommand::SetFeatureOutputMask,
+            ClassifiedCommand::EnableFeatureOutputChannels,
+            ClassifiedCommand::SetInputReportFormat,
+            ClassifiedCommand::StartInputStream,
+        ],
+    )
+}
+
+/// Reapplies the reviewed feature-output enable after sensor warm-up.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error under the standard bounded probe contract.
+pub fn run_motion_enable_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_input_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        Duration::from_millis(250),
+        1,
+        &[ClassifiedCommand::EnableFeatureOutputChannels],
+    )
+}
+
+fn run_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+    commands: &[ClassifiedCommand],
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    let packets = commands
+        .iter()
+        .map(|command| command.packet())
+        .collect::<Vec<_>>();
+    run_packet_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        &packets,
+    )
+}
+
+/// Runs the exact pinned SDL sequence as an isolated upstream reference.
+///
+/// This is intentionally separate from normal project initialization because
+/// the sequence contains SDL-labeled unknown, rumble, and grip packets.
+///
+/// # Errors
+///
+/// Returns a privacy-safe bounded transport or observation error.
+pub fn run_sdl_reference_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_packet_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        sdl_reference_packets(),
+    )
+}
+
+fn run_packet_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+    packets: &[&[u8]],
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    if duration.is_zero() || report_limit == 0 {
+        return Err(invalid_data("USB input probe bounds must be nonzero"));
+    }
+    if packets.is_empty() {
+        return Err(invalid_data("USB input probe requires a reviewed command"));
+    }
+    let layout = inspect_bulk_endpoints(vendor_id, product_id, interface_number)?;
+    let transfer_timeout = Duration::from_millis(250).min(duration);
+    let mut transport = open_bulk_transport(vendor_id, product_id, layout, transfer_timeout)?;
+    let mut command_reply_lengths = Vec::with_capacity(packets.len());
+    for packet in packets {
+        transport.send(packet).map_err(transport_error)?;
+        command_reply_lengths.push(
+            transport
+                .receive(MAX_TRANSFER_LENGTH)
+                .map_err(transport_error)?,
+        );
+    }
+
+    let deadline = Instant::now() + duration;
+    let mut reports = Vec::new();
+    while reports.len() < report_limit && Instant::now() < deadline {
+        if let Some(report) = transport
+            .receive_report_metadata()
+            .map_err(transport_error)?
+        {
+            reports.push(report);
+        }
+    }
+    Ok(MinimalInputProbeObservation {
+        command_reply_lengths,
+        reports,
+    })
+}
+
 fn validate_layout(layout: BulkEndpointLayout, timeout: Duration) -> Result<(), UserSafeError> {
     if timeout.is_zero() {
         return Err(invalid_data("USB bulk transfer timeout must be nonzero"));
@@ -167,10 +380,6 @@ fn validate_layout(layout: BulkEndpointLayout, timeout: Duration) -> Result<(), 
     Ok(())
 }
 
-#[allow(
-    dead_code,
-    reason = "live transport remains gated until a later checkpoint"
-)]
 fn validate_transfer_length(length: usize) -> Result<(), TransportError> {
     if length == 0 || length > MAX_TRANSFER_LENGTH {
         Err(TransportError::TransferFailed)
@@ -179,10 +388,6 @@ fn validate_transfer_length(length: usize) -> Result<(), TransportError> {
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "live transport remains gated until a later checkpoint"
-)]
 const fn map_transfer_error(error: TransferError) -> TransportError {
     match error {
         TransferError::Cancelled => TransportError::Timeout,
@@ -191,6 +396,16 @@ const fn map_transfer_error(error: TransferError) -> TransportError {
         | TransferError::Fault
         | TransferError::InvalidArgument
         | TransferError::Unknown(_) => TransportError::TransferFailed,
+    }
+}
+
+fn transport_error(error: TransportError) -> UserSafeError {
+    match error {
+        TransportError::Timeout => UserSafeError::new(
+            ErrorCategory::Timeout,
+            "Windows USB bulk transfer timed out",
+        ),
+        TransportError::TransferFailed => platform_error("Windows USB bulk transfer failed"),
     }
 }
 
