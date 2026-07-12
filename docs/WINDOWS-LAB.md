@@ -14,6 +14,8 @@ pairing-key, bootloader, or other persistent controller writes.
   verification as independent states.
 - Mark claims `unverified` until repeated against physical hardware.
 - Stop before every hardware checkpoint listed in `IMPLEMENTATION-PLAN.md`.
+- Continue non-controller development autonomously after each experiment; ask
+  for user action only when the next step requires physical controller input.
 
 ## Sanitized observation template
 
@@ -76,6 +78,13 @@ The Bluetooth session begins with read-only adapter and device inventory. The
 `bluetooth-inventory` command uses Windows' Bluetooth selector and emits a
 short digest instead of a Bluetooth address or Windows device identifier. It
 does not pair, connect, inspect link keys, or send controller commands. The
+`bluetooth-scan` command uses Windows' Bluetooth Classic association-endpoint
+selector for a maximum of ten seconds. The bounded window reflects an observed
+eight-to-ten-second SYNC period; it is not a claim about the cause of that
+timeout. A scan returning no candidate must be recorded as a Windows discovery
+limitation until an independent comparison proves otherwise.
+
+The
 user must unplug USB, hold SYNC for at least one second, and confirm the
 sanitized candidate before pairing. The application may
 ask Windows to perform pairing but must not read, export, or persist link keys.

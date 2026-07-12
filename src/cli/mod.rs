@@ -92,6 +92,13 @@ pub enum Command {
     /// Enumerate Windows Bluetooth devices without pairing or connecting.
     #[cfg(windows)]
     BluetoothInventory,
+    /// Watch for nearby unpaired Bluetooth devices without pairing.
+    #[cfg(windows)]
+    BluetoothScan {
+        /// Bounded scan duration; the BEE-021 pairing window is brief.
+        #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+    },
     /// Inspect BEE-021 `WinUSB` bulk endpoints without claiming the interface.
     #[cfg(windows)]
     UsbBulkInventory,
@@ -313,6 +320,11 @@ enum Payload {
         devices: Vec<BluetoothDeviceView>,
     },
     #[cfg(windows)]
+    BluetoothScan {
+        seconds: u64,
+        devices: Vec<BluetoothDeviceView>,
+    },
+    #[cfg(windows)]
     UsbBulkInterface {
         interface_number: u8,
         input_endpoint: String,
@@ -482,6 +494,8 @@ fn execute(
         #[cfg(windows)]
         Command::BluetoothInventory => bluetooth_inventory(),
         #[cfg(windows)]
+        Command::BluetoothScan { seconds } => bluetooth_scan(seconds),
+        #[cfg(windows)]
         Command::UsbBulkInventory => usb_bulk_inventory(),
         #[cfg(windows)]
         Command::UsbInputProbe {
@@ -570,6 +584,24 @@ fn bluetooth_inventory() -> Result<Payload, UserSafeError> {
     Ok(Payload::BluetoothInventory {
         adapter_present: inventory.adapter_present,
         devices: inventory
+            .devices
+            .into_iter()
+            .map(|device| BluetoothDeviceView {
+                id_digest: device.id_digest,
+                name: device.name,
+                paired: device.paired,
+                enabled: device.enabled,
+            })
+            .collect(),
+    })
+}
+
+#[cfg(windows)]
+fn bluetooth_scan(seconds: u64) -> Result<Payload, UserSafeError> {
+    let scan = crate::platform::windows::scan_unpaired_bluetooth(Duration::from_secs(seconds))?;
+    Ok(Payload::BluetoothScan {
+        seconds: scan.duration.as_secs(),
+        devices: scan
             .devices
             .into_iter()
             .map(|device| BluetoothDeviceView {
@@ -981,6 +1013,10 @@ fn render_human(payload: Payload) -> String {
             devices,
         } => render_bluetooth_inventory(&mut output, adapter_present, devices),
         #[cfg(windows)]
+        Payload::BluetoothScan { seconds, devices } => {
+            render_bluetooth_scan(&mut output, seconds, devices);
+        }
+        #[cfg(windows)]
         Payload::UsbBulkInterface {
             interface_number,
             input_endpoint,
@@ -1092,6 +1128,19 @@ fn render_bluetooth_inventory(
     devices: Vec<BluetoothDeviceView>,
 ) {
     let _ = writeln!(output, "bluetooth adapter present: {adapter_present}");
+    for device in devices {
+        let name = device.name.as_deref().unwrap_or("unnamed device");
+        let _ = writeln!(
+            output,
+            "{name}: id={} paired={} enabled={}",
+            device.id_digest, device.paired, device.enabled
+        );
+    }
+}
+
+#[cfg(windows)]
+fn render_bluetooth_scan(output: &mut String, seconds: u64, devices: Vec<BluetoothDeviceView>) {
+    let _ = writeln!(output, "bluetooth scan: {seconds} seconds");
     for device in devices {
         let name = device.name.as_deref().unwrap_or("unnamed device");
         let _ = writeln!(

@@ -5,7 +5,8 @@ mod bulk;
 mod usb;
 
 pub use bluetooth::{
-    BluetoothDeviceObservation, BluetoothInventoryObservation, enumerate_bluetooth,
+    BluetoothDeviceObservation, BluetoothInventoryObservation, BluetoothScanObservation,
+    enumerate_bluetooth, scan_unpaired_bluetooth,
 };
 pub use bulk::{
     BulkEndpointLayout, BulkReportObservation, CalibrationObservation,
