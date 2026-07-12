@@ -8,8 +8,9 @@ mod pairtool;
 mod usb;
 
 pub use ble::{
-    BleAdapterCapabilities, BleAdvertisementObservation, BleScanObservation, inspect_ble_adapter,
-    scan_ble_advertisements,
+    BleAdapterCapabilities, BleAdvertisementObservation, BleDeviceObservation,
+    BleDeviceScanObservation, BleScanObservation, inspect_ble_adapter, scan_ble_advertisements,
+    scan_unpaired_ble_devices,
 };
 pub use bluetooth::{
     BluetoothDeviceObservation, BluetoothInventoryObservation, BluetoothScanObservation,

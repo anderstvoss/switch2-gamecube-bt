@@ -121,7 +121,7 @@ Conclusion: Classic discovery is not the BEE-021 route to pursue.
   added to write only sanitized CLI output to a caller-selected local file.
 - The test package must be rebuilt with an incremented package version after
   executable or manifest changes before it can replace the installed version.
-- Local package version `0.1.0.3` contains result-file support, a
+- Local package version `0.1.0.4` contains result-file support, a
   package-identity diagnostic, and a registered-activation launch helper.
   Registered activation proved package identity; a controller-free two-second
   scan completed with zero advertisements. This validates the result channel
@@ -131,18 +131,27 @@ Conclusion: Classic discovery is not the BEE-021 route to pursue.
   identity. It is retained only as an execution observation, not BLE discovery
   evidence. No candidate was available to confirm, and no pairing, connection,
   GATT access, or controller command occurred.
+- A later user-supervised eight-second scan used registered activation and
+  verified package identity, but also returned zero advertisements. This is
+  valid negative evidence for discovery through the current Windows BLE
+  advertisement watcher, not proof of a controller defect or non-BLE transport.
+  No pairing, connection, GATT access, or controller command occurred.
 - Test certificate, MSIX output, staging directory, and package artifacts are
   local-only and ignored. Do not commit or expose them.
 
 ## Immediate next steps
 
-1. Ask the user for `ready for verified BLE SYNC`, then start the prebuilt,
-   registered-activation eight-second scan and prompt immediate SYNC press.
-2. If a sanitized Switch 2 BLE service candidate appears, stop and request user
-   confirmation before any GATT connection. Do not pair or send commands.
-3. Audit public Switch 2 BLE protocol implementations before adding a bounded,
-   read-only GATT service-discovery client. Add session commands only after
-   evidence, fixtures, and explicit user approval.
+1. Run the new registered-activation Windows unpaired-BLE device-selector scan
+   without the controller to validate its lifecycle and sanitized output.
+2. If it completes normally, request one supervised SYNC attempt using that
+   distinct discovery path. Do not pair, connect, or send commands.
+3. The public BlueZ plugin establishes a shared Switch 2 vendor-service lead,
+   but states that it was developed and tested only with Pro Controller 2; do
+   not apply its session initialization to BEE-021. The public input viewer is
+   a handle and feature-flag lead only because it includes writes and sensitive
+   reads that this project must not perform.
+4. Add a bounded, read-only GATT service-discovery client only after BEE-021
+   discovery evidence, fixtures, and explicit user approval.
 
 ## Package-host checkpoint
 

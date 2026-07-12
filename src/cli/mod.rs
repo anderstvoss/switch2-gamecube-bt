@@ -122,6 +122,13 @@ pub enum Command {
         #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u64).range(1..=10))]
         seconds: u64,
     },
+    /// Discover unpaired BLE devices without pairing or connecting.
+    #[cfg(windows)]
+    BleDeviceScan {
+        /// Bounded scan duration in seconds.
+        #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+    },
     /// Report whether this process has Windows package identity.
     #[cfg(windows)]
     PackageStatus,
@@ -262,9 +269,10 @@ pub fn run(args: Args) -> CliResult {
         | Command::BluetoothLabStatus
         | Command::BluetoothPairtoolScan { .. } => "windows_bluetooth_diagnostic",
         #[cfg(windows)]
-        Command::BleScan { .. } | Command::BleAdapterStatus | Command::PackageStatus => {
-            "windows_ble_read_only"
-        }
+        Command::BleScan { .. }
+        | Command::BleDeviceScan { .. }
+        | Command::BleAdapterStatus
+        | Command::PackageStatus => "windows_ble_read_only",
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -378,6 +386,11 @@ enum Payload {
         advertisements: Vec<BleAdvertisementView>,
     },
     #[cfg(windows)]
+    BleDeviceScan {
+        seconds: u64,
+        devices: Vec<BleDeviceView>,
+    },
+    #[cfg(windows)]
     PackageStatus {
         package_identity_present: bool,
     },
@@ -485,6 +498,13 @@ struct BleAdvertisementView {
 
 #[cfg(windows)]
 #[derive(Debug, Serialize)]
+struct BleDeviceView {
+    identifier_digest: String,
+    local_name: Option<String>,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
 struct UsbInputMetadataView {
     report_id: String,
     length: usize,
@@ -575,6 +595,8 @@ fn execute(
         } => bluetooth_pairtool_scan(approve_active_discovery, seconds),
         #[cfg(windows)]
         Command::BleScan { seconds } => ble_scan(seconds),
+        #[cfg(windows)]
+        Command::BleDeviceScan { seconds } => ble_device_scan(seconds),
         #[cfg(windows)]
         Command::PackageStatus => Ok(package_status()),
         #[cfg(windows)]
@@ -734,6 +756,22 @@ fn ble_scan(seconds: u64) -> Result<Payload, UserSafeError> {
                 identifier_digest: advertisement.identifier_digest,
                 local_name: advertisement.local_name,
                 switch2_service_advertised: advertisement.switch2_service_advertised,
+            })
+            .collect(),
+    })
+}
+
+#[cfg(windows)]
+fn ble_device_scan(seconds: u64) -> Result<Payload, UserSafeError> {
+    let scan = crate::platform::windows::scan_unpaired_ble_devices(Duration::from_secs(seconds))?;
+    Ok(Payload::BleDeviceScan {
+        seconds: scan.duration.as_secs(),
+        devices: scan
+            .devices
+            .into_iter()
+            .map(|device| BleDeviceView {
+                identifier_digest: device.identifier_digest,
+                local_name: device.local_name,
             })
             .collect(),
     })
@@ -1177,6 +1215,10 @@ fn render_human(payload: Payload) -> String {
             advertisements,
         } => render_ble_scan(&mut output, seconds, advertisements),
         #[cfg(windows)]
+        Payload::BleDeviceScan { seconds, devices } => {
+            render_ble_device_scan(&mut output, seconds, devices);
+        }
+        #[cfg(windows)]
         Payload::PackageStatus {
             package_identity_present,
         } => {
@@ -1366,6 +1408,22 @@ fn render_ble_scan(output: &mut String, seconds: u64, advertisements: Vec<BleAdv
             output,
             "{name}: id={} switch2_service_advertised={}",
             advertisement.identifier_digest, advertisement.switch2_service_advertised
+        );
+    }
+}
+
+#[cfg(windows)]
+fn render_ble_device_scan(output: &mut String, seconds: u64, devices: Vec<BleDeviceView>) {
+    let _ = writeln!(output, "BLE device-selector scan: {seconds} seconds");
+    if devices.is_empty() {
+        let _ = writeln!(output, "no BLE devices observed");
+    }
+    for device in devices {
+        let _ = writeln!(
+            output,
+            "{}: id={}",
+            device.local_name.as_deref().unwrap_or("unnamed BLE device"),
+            device.identifier_digest
         );
     }
 }

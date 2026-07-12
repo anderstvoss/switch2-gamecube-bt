@@ -8,12 +8,15 @@ use std::{
 
 use sha2::{Digest, Sha256};
 use windows::{
-    Devices::Bluetooth::{
-        Advertisement::{
-            BluetoothLEAdvertisementReceivedEventArgs, BluetoothLEAdvertisementWatcher,
-            BluetoothLEScanningMode,
+    Devices::{
+        Bluetooth::{
+            Advertisement::{
+                BluetoothLEAdvertisementReceivedEventArgs, BluetoothLEAdvertisementWatcher,
+                BluetoothLEScanningMode,
+            },
+            BluetoothAdapter, BluetoothLEDevice,
         },
-        BluetoothAdapter,
+        Enumeration::DeviceInformation,
     },
     Foundation::TypedEventHandler,
     core::GUID,
@@ -41,6 +44,24 @@ pub struct BleScanObservation {
     pub duration: Duration,
     /// Deduplicated sanitized advertisements.
     pub advertisements: Vec<BleAdvertisementObservation>,
+}
+
+/// Sanitized device metadata from the Windows BLE device selector.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BleDeviceObservation {
+    /// Short digest of the Windows device identifier; the identifier is not exposed.
+    pub identifier_digest: String,
+    /// Device name when Windows provides one.
+    pub local_name: Option<String>,
+}
+
+/// Bounded result of Windows BLE device-selector discovery.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BleDeviceScanObservation {
+    /// Requested scan duration.
+    pub duration: Duration,
+    /// Deduplicated sanitized devices observed through the selector.
+    pub devices: Vec<BleDeviceObservation>,
 }
 
 /// Capabilities required for the host to act as a BLE controller client.
@@ -117,6 +138,58 @@ pub fn scan_ble_advertisements(duration: Duration) -> Result<BleScanObservation,
     })
 }
 
+/// Discover unpaired BLE devices through Windows' device-selector watcher.
+///
+/// This is a distinct discovery path from advertisement watching. It does not
+/// pair, connect, perform GATT discovery, or access Bluetooth addresses.
+///
+/// # Errors
+///
+/// Returns a sanitized error if the duration is outside one to ten seconds or
+/// Windows cannot create, start, or stop the selector watcher.
+pub fn scan_unpaired_ble_devices(
+    duration: Duration,
+) -> Result<BleDeviceScanObservation, UserSafeError> {
+    if !(Duration::from_secs(1)..=Duration::from_secs(10)).contains(&duration) {
+        return Err(UserSafeError::new(
+            ErrorCategory::InvalidData,
+            "BLE scan duration must be between one and ten seconds",
+        ));
+    }
+    let selector =
+        BluetoothLEDevice::GetDeviceSelectorFromPairingState(false).map_err(platform_error)?;
+    let watcher = DeviceInformation::CreateWatcherAqsFilter(&selector).map_err(platform_error)?;
+    let (sender, receiver) = mpsc::channel();
+    let handler = TypedEventHandler::new(move |_, device| {
+        if let Some(device) = &*device
+            && let Ok(observation) = observe_selector_device(device)
+        {
+            let _ = sender.send(observation);
+        }
+        Ok(())
+    });
+    let token = watcher.Added(&handler).map_err(platform_error)?;
+    watcher.Start().map_err(platform_error)?;
+    let deadline = Instant::now() + duration;
+    let mut devices = BTreeMap::new();
+    while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+        match receiver.recv_timeout(remaining) {
+            Ok(device) => {
+                devices.insert(device.identifier_digest.clone(), device);
+            }
+            Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    let stop_result = watcher.Stop().map_err(platform_error);
+    let remove_result = watcher.RemoveAdded(token).map_err(platform_error);
+    stop_result?;
+    remove_result?;
+    Ok(BleDeviceScanObservation {
+        duration,
+        devices: devices.into_values().collect(),
+    })
+}
+
 fn observe_advertisement(
     args: &BluetoothLEAdvertisementReceivedEventArgs,
 ) -> Result<BleAdvertisementObservation, UserSafeError> {
@@ -139,8 +212,31 @@ fn observe_advertisement(
     })
 }
 
+fn observe_selector_device(
+    device: &DeviceInformation,
+) -> Result<BleDeviceObservation, UserSafeError> {
+    Ok(BleDeviceObservation {
+        identifier_digest: digest_identifier(
+            &device.Id().map_err(platform_error)?.to_string_lossy(),
+        ),
+        local_name: device
+            .Name()
+            .ok()
+            .map(|name| name.to_string_lossy())
+            .filter(|name| !name.trim().is_empty()),
+    })
+}
+
 fn digest_address(address: u64) -> String {
-    let digest = Sha256::digest(address.to_le_bytes());
+    digest_bytes(&address.to_le_bytes())
+}
+
+fn digest_identifier(identifier: &str) -> String {
+    digest_bytes(identifier.as_bytes())
+}
+
+fn digest_bytes(input: &[u8]) -> String {
+    let digest = Sha256::digest(input);
     let mut result = String::with_capacity(16);
     for byte in &digest[..8] {
         use std::fmt::Write as _;

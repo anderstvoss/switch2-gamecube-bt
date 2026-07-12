@@ -193,6 +193,20 @@ and completed a controller-free watcher baseline. The next physical checkpoint
 is one prebuilt eight-second scan through that verified path while the user
 places BEE-021 in SYNC mode.
 
+The verified supervised scan completed normally with package identity present
+but returned zero advertisements. This is valid negative evidence for the
+current Windows BLE advertisement watcher only. Audit public protocol leads and
+materially different Windows discovery mechanisms before requesting another
+physical checkpoint; do not pair or connect speculatively.
+
+The audit identifies Windows' unpaired Bluetooth-LE device-selector watcher as
+a distinct, documented discovery path. It is being added as a bounded,
+read-only diagnostic and must be validated without the controller before one
+more supervised SYNC attempt. Public BlueZ work establishes the shared Switch 2
+vendor-service UUID as a protocol lead, but is explicitly developed and tested
+only with Pro Controller 2; it must not be treated as BEE-021 initialization
+evidence.
+
 The previous known-device, association-endpoint, and active PairTool scans are
 preserved as negative Bluetooth Classic evidence only. They do not test BLE and
 must not be interpreted as a controller or Windows hardware failure. The
