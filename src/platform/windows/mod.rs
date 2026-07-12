@@ -1,10 +1,15 @@
 //! Native Windows platform adapters.
 
+mod ble;
 mod bluetooth;
 mod bulk;
 mod pairtool;
 mod usb;
 
+pub use ble::{
+    BleAdapterCapabilities, BleAdvertisementObservation, BleScanObservation, inspect_ble_adapter,
+    scan_ble_advertisements,
+};
 pub use bluetooth::{
     BluetoothDeviceObservation, BluetoothInventoryObservation, BluetoothScanObservation,
     enumerate_bluetooth, scan_unpaired_bluetooth,

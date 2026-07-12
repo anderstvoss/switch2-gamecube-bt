@@ -90,6 +90,12 @@ protocol inventory and retains no raw output. PairTool is a lab comparison
 tool, not a dependency of the controller runtime. Its active endpoint discovery
 mode may be used only at a separate, user-coordinated SYNC checkpoint.
 
+The current BLE scanner is intentionally read-only and portable, but Windows
+documents a `bluetooth` package capability for advertisement APIs. Do not treat
+an empty unpackaged BLE scan as controller evidence until the planned MSIX
+capability-host comparison is complete. Installing that host requires separate
+user approval.
+
 The
 user must unplug USB, hold SYNC for at least one second, and confirm the
 sanitized candidate before pairing. The application may

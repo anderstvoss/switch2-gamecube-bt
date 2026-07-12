@@ -112,6 +112,16 @@ pub enum Command {
         #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u64).range(1..=10))]
         seconds: u64,
     },
+    /// Scan BLE advertisements without connecting or pairing.
+    #[cfg(windows)]
+    BleScan {
+        /// Bounded scan duration in seconds.
+        #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+    },
+    /// Report default adapter BLE capabilities without scanning.
+    #[cfg(windows)]
+    BleAdapterStatus,
     /// Inspect BEE-021 `WinUSB` bulk endpoints without claiming the interface.
     #[cfg(windows)]
     UsbBulkInventory,
@@ -348,6 +358,16 @@ enum Payload {
         endpoint_digests: Vec<String>,
     },
     #[cfg(windows)]
+    BleScan {
+        seconds: u64,
+        advertisements: Vec<BleAdvertisementView>,
+    },
+    #[cfg(windows)]
+    BleAdapterStatus {
+        low_energy_supported: bool,
+        central_role_supported: bool,
+    },
+    #[cfg(windows)]
     UsbBulkInterface {
         interface_number: u8,
         input_endpoint: String,
@@ -434,6 +454,14 @@ struct BluetoothDeviceView {
     name: Option<String>,
     paired: bool,
     enabled: bool,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
+struct BleAdvertisementView {
+    identifier_digest: String,
+    local_name: Option<String>,
+    switch2_service_advertised: bool,
 }
 
 #[cfg(windows)]
@@ -526,6 +554,10 @@ fn execute(
             approve_active_discovery,
             seconds,
         } => bluetooth_pairtool_scan(approve_active_discovery, seconds),
+        #[cfg(windows)]
+        Command::BleScan { seconds } => ble_scan(seconds),
+        #[cfg(windows)]
+        Command::BleAdapterStatus => ble_adapter_status(),
         #[cfg(windows)]
         Command::UsbBulkInventory => usb_bulk_inventory(),
         #[cfg(windows)]
@@ -666,6 +698,32 @@ fn bluetooth_pairtool_scan(approved: bool, seconds: u64) -> Result<Payload, User
     Ok(Payload::BluetoothPairtoolScan {
         seconds: discovery.duration.as_secs(),
         endpoint_digests: discovery.endpoint_digests,
+    })
+}
+
+#[cfg(windows)]
+fn ble_scan(seconds: u64) -> Result<Payload, UserSafeError> {
+    let scan = crate::platform::windows::scan_ble_advertisements(Duration::from_secs(seconds))?;
+    Ok(Payload::BleScan {
+        seconds: scan.duration.as_secs(),
+        advertisements: scan
+            .advertisements
+            .into_iter()
+            .map(|advertisement| BleAdvertisementView {
+                identifier_digest: advertisement.identifier_digest,
+                local_name: advertisement.local_name,
+                switch2_service_advertised: advertisement.switch2_service_advertised,
+            })
+            .collect(),
+    })
+}
+
+#[cfg(windows)]
+fn ble_adapter_status() -> Result<Payload, UserSafeError> {
+    let capabilities = crate::platform::windows::inspect_ble_adapter()?;
+    Ok(Payload::BleAdapterStatus {
+        low_energy_supported: capabilities.low_energy_supported,
+        central_role_supported: capabilities.central_role_supported,
     })
 }
 
@@ -1086,6 +1144,21 @@ fn render_human(payload: Payload) -> String {
             endpoint_digests,
         } => render_bluetooth_pairtool_scan(&mut output, seconds, endpoint_digests),
         #[cfg(windows)]
+        Payload::BleScan {
+            seconds,
+            advertisements,
+        } => render_ble_scan(&mut output, seconds, advertisements),
+        #[cfg(windows)]
+        Payload::BleAdapterStatus {
+            low_energy_supported,
+            central_role_supported,
+        } => {
+            let _ = writeln!(
+                output,
+                "BLE adapter: low_energy_supported={low_energy_supported} central_role_supported={central_role_supported}"
+            );
+        }
+        #[cfg(windows)]
         Payload::UsbBulkInterface {
             interface_number,
             input_endpoint,
@@ -1241,6 +1314,22 @@ fn render_bluetooth_pairtool_scan(
     let _ = writeln!(output, "pairtool active scan: {seconds} seconds");
     for endpoint_digest in endpoint_digests {
         let _ = writeln!(output, "discovered endpoint: {endpoint_digest}");
+    }
+}
+
+#[cfg(windows)]
+fn render_ble_scan(output: &mut String, seconds: u64, advertisements: Vec<BleAdvertisementView>) {
+    let _ = writeln!(output, "BLE scan: {seconds} seconds");
+    for advertisement in advertisements {
+        let name = advertisement
+            .local_name
+            .as_deref()
+            .unwrap_or("unnamed BLE device");
+        let _ = writeln!(
+            output,
+            "{name}: id={} switch2_service_advertised={}",
+            advertisement.identifier_digest, advertisement.switch2_service_advertised
+        );
     }
 }
 
