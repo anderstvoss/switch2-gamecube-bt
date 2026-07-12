@@ -185,6 +185,12 @@ validates package launch, sanitized result retrieval, and watcher lifecycle;
 the next checkpoint is a prebuilt eight-second packaged scan while the user
 places BEE-021 in SYNC mode.
 
+That supervised packaged scan completed normally but returned zero
+advertisements while the user held SYNC. This is negative evidence for the
+specific scan only. Before requesting another physical attempt, audit the
+packaged-launch and watcher assumptions and identify a materially different
+discovery experiment.
+
 The previous known-device, association-endpoint, and active PairTool scans are
 preserved as negative Bluetooth Classic evidence only. They do not test BLE and
 must not be interpreted as a controller or Windows hardware failure. The

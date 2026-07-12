@@ -27,3 +27,13 @@ local-only and ignored.
 Run the prebuilt packaged eight-second advertisement scan while the user places
 BEE-021 in SYNC mode. If a sanitized candidate appears, stop for confirmation
 before any connection or GATT access.
+
+## Supervised SYNC attempt
+
+The user subsequently held SYNC as the prebuilt packaged eight-second scan
+started. The watcher completed normally and returned zero advertisements. This
+is negative evidence for this specific Windows packaged BLE scan, not evidence
+of a controller defect or proof that BEE-021 does not advertise over BLE.
+
+No candidate was available to confirm. The experiment did not pair, connect,
+perform GATT service discovery, or send a controller command.
