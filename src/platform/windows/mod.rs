@@ -3,7 +3,10 @@
 mod bulk;
 mod usb;
 
-pub use bulk::{BulkEndpointLayout, inspect_bulk_endpoints};
+pub use bulk::{
+    BulkEndpointLayout, BulkReportObservation, MinimalInputProbeObservation,
+    inspect_bulk_endpoints, run_minimal_input_probe,
+};
 pub use usb::{
     UsbDescriptorObservation, UsbHidInterface, UsbInputObservation, enumerate_usb_hid,
     inspect_usb_descriptor, observe_usb_input,

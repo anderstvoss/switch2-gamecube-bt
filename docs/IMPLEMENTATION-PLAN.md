@@ -93,6 +93,14 @@ models it as `CandidateVolatile`, so preflight still rejects it before I/O. See
 Decision 0003 for sources, uncertainty, the bounded experiment plan, and the
 mandatory approval gate.
 
+The one-packet probe received a 12-byte command reply but no input reports in
+ten seconds. This confirms the WinUSB command/reply path and rules out
+start-stream alone for the current 64-byte input mode. After a fresh USB
+reconnection, the next bounded probe will select report format `0x05` and then
+start streaming. It will stop without adding feature-output, unknown, rumble,
+grip, flash, firmware, reset, pairing, or calibration-write commands if input
+still does not appear.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting

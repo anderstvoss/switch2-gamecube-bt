@@ -48,7 +48,7 @@ pub enum ClassifiedCommand {
 }
 
 impl ClassifiedCommand {
-    fn packet(self) -> &'static [u8] {
+    pub(crate) fn packet(self) -> &'static [u8] {
         match self {
             Self::SetFeatureOutputMask => &[
                 0x0c, 0x91, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x27, 0x00, 0x00, 0x00,

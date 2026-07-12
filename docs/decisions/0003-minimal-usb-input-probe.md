@@ -73,3 +73,16 @@ support session-volatility and input-enablement claims for one packet; it would
 not validate the remaining sequence, calibration, output features, or
 Bluetooth behavior. A failed probe would establish only that more setup is
 needed, not that the whole SDL sequence is safe.
+
+## Observed result
+
+The approved probe was run once on Windows 11. The controller returned a
+12-byte reply to the single start-stream command, but produced no input reports
+during the bounded ten-second observation. The interface was then released
+without another command. See
+`observations/2026-07-11-windows-usb-start-stream-probe.md`.
+
+This validates the host transport and shows the one-packet candidate is
+insufficient. The next smallest historically supported probe is report-format
+`0x05` followed by start-stream on a freshly reconnected USB session. That
+experiment remains limited to those two packets and must stop on failure.
