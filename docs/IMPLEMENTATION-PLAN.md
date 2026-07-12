@@ -84,6 +84,15 @@ production or CLI path can create it. No live interface claim or transfer has
 been performed. The next review gate is deciding which minimum volatile input
 initialization slice has sufficient evidence for a user-approved live test.
 
+SDL history shows that its earliest BEE-021 wired path used only the 16-byte
+start-stream packet, before a later change adopted a full sequence captured
+from real hardware. Later history added report-format selection and removed
+four apparent console queries. This makes the start-stream packet the smallest
+evidence-backed input probe, but does not prove persistence behavior. The code
+models it as `CandidateVolatile`, so preflight still rejects it before I/O. See
+Decision 0003 for sources, uncertainty, the bounded experiment plan, and the
+mandatory approval gate.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting

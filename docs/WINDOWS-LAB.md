@@ -41,6 +41,13 @@ report lengths, and input reports. It may compare SDL3-visible controls with
 the project's observations. It must not send output reports until a later
 checkpoint explicitly approves an evidence-backed volatile command.
 
+The proposed first write experiment is documented in Decision 0003. It is a
+single start-stream candidate followed by a bounded reply and ten-second input
+observation. The candidate remains non-executable. Do not claim interface 1 or
+run the experiment until the user explicitly approves that checkpoint. A
+failure must stop the experiment; it does not authorize automatically sending
+the rest of SDL's sequence.
+
 ## Bluetooth session
 
 The Bluetooth session begins with read-only adapter and device inventory. The
