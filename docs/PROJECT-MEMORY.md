@@ -146,19 +146,23 @@ Conclusion: Classic discovery is not the BEE-021 route to pursue.
 
 ## Immediate next steps
 
-1. The audited public Windows implementation uses a separate ESP32-S3 BLE
+1. The current host has no WSL distribution installed and no adapter-passthrough
+   tool. With user approval, install WSL2 and a supported Linux distribution,
+   then attach a dedicated USB Bluetooth adapter for direct BlueZ discovery.
+2. Use only bounded, read-only BlueZ discovery at the first Linux hardware
+   checkpoint. Do not pair or connect before a sanitized candidate appears and
+   the user confirms the next step.
+3. The audited public Windows implementation uses a separate ESP32-S3 BLE
    bridge, rather than the Windows Bluetooth stack. Treat that as an external
-   hardware/architecture option, not a host-only discovery result or a basis
-   for Windows protocol commands.
-2. The public BlueZ plugin establishes a shared Switch 2 vendor-service lead,
+   hardware/architecture fallback, not a host-only discovery result or a basis
+   for Windows protocol commands. Do not buy, flash, configure, or connect one
+   without explicit approval.
+4. The public BlueZ plugin establishes a shared Switch 2 vendor-service lead,
    but states that it was developed and tested only with Pro Controller 2; do
    not apply its session initialization to BEE-021. The public input viewer is
    a handle and feature-flag lead only because it includes writes and sensitive
    reads that this project must not perform.
-3. Decide whether to investigate a separate BLE bridge or to continue with a
-   Windows-host-only approach. Do not buy, flash, connect, or configure an
-   external bridge without explicit user approval.
-4. Add a bounded, read-only GATT service-discovery client only after BEE-021
+5. Add a bounded, read-only GATT service-discovery client only after BEE-021
    discovery evidence, fixtures, and explicit user approval.
 
 ## Package-host checkpoint

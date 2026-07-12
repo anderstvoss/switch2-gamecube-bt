@@ -218,6 +218,11 @@ architecture alternative, not evidence that a further host-only Windows scan
 will discover BEE-021. Do not obtain, flash, configure, or connect such a
 bridge without explicit approval.
 
+The current host has no WSL distribution or USB adapter-passthrough tool. The
+next connection path is therefore a user-approved WSL2 and dedicated USB
+Bluetooth-adapter setup for direct, bounded BlueZ discovery. The ESP32-S3
+bridge remains a separate fallback, requiring its own hardware and approval.
+
 The previous known-device, association-endpoint, and active PairTool scans are
 preserved as negative Bluetooth Classic evidence only. They do not test BLE and
 must not be interpreted as a controller or Windows hardware failure. The
