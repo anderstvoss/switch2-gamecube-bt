@@ -12,6 +12,13 @@ const MAX_REPLY_LENGTH: usize = 64;
 /// Audited source revision for the modeled command ordering.
 pub const AUDITED_SDL_REVISION: &str = "82141a2439acc111661102ba6f968c85e71cff40";
 
+/// SDL revision that replaced the original one-packet startup with a sequence
+/// captured from real hardware.
+pub const SDL_FULL_SEQUENCE_REVISION: &str = "70bfdd013a804fdb15ec906d4ba18389c57e9420";
+
+/// SDL revision that removed four apparent console queries from that sequence.
+pub const SDL_QUERY_REMOVAL_REVISION: &str = "9fd3dbfc42a247b996858fe66fa835bdb1f03aa3";
+
 /// Persistence classification applied before any command may be serialized.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SafetyClass {
@@ -122,6 +129,22 @@ impl InitializationPlan {
                     safety_class: SafetyClass::CandidateVolatile,
                 },
             ]),
+        }
+    }
+
+    /// Returns the smallest input probe supported by SDL's public history.
+    ///
+    /// Early wired support used only the start-stream packet, but the upstream
+    /// history does not establish whether the command changes persistent
+    /// state. It therefore remains candidate-volatile and fails preflight
+    /// before any transport operation.
+    #[must_use]
+    pub fn candidate_minimal_input_probe() -> Self {
+        Self {
+            steps: Box::new([InitializationStep::Command {
+                command: ClassifiedCommand::StartInputStream,
+                safety_class: SafetyClass::CandidateVolatile,
+            }]),
         }
     }
 
@@ -297,6 +320,26 @@ mod tests {
         ));
         assert!(transport.sent.is_empty());
         assert_eq!(plan.blockers().len(), 6);
+    }
+
+    #[test]
+    fn minimal_input_probe_remains_non_executable() {
+        let plan = InitializationPlan::candidate_minimal_input_probe();
+        assert_eq!(
+            plan.steps(),
+            [InitializationStep::Command {
+                command: ClassifiedCommand::StartInputStream,
+                safety_class: SafetyClass::CandidateVolatile,
+            }]
+        );
+        let mut transport = MockTransport::default();
+        assert_eq!(
+            plan.execute(&mut transport),
+            Err(InitializationError::DisallowedSafetyClass(
+                SafetyClass::CandidateVolatile
+            ))
+        );
+        assert!(transport.sent.is_empty());
     }
 
     #[test]
