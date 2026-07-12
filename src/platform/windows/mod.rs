@@ -1,8 +1,12 @@
 //! Native Windows platform adapters.
 
+mod bluetooth;
 mod bulk;
 mod usb;
 
+pub use bluetooth::{
+    BluetoothDeviceObservation, BluetoothInventoryObservation, enumerate_bluetooth,
+};
 pub use bulk::{
     BulkEndpointLayout, BulkReportObservation, CalibrationObservation,
     MinimalInputProbeObservation, inspect_bulk_endpoints, read_calibration,

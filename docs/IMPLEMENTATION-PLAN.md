@@ -155,7 +155,13 @@ captured in the latest run.
 
 ### Goal 4: Native Windows Bluetooth
 
-Implement Windows adapter and device inventory before pairing. After requesting
+Read-only Windows Bluetooth inventory is now implemented. It uses the Windows
+Bluetooth device selector, reports only display names and short per-host
+identifier digests, and does not pair, connect, or access link keys. Hardware
+discovery remains pending until the controller is intentionally moved to
+Bluetooth mode.
+
+After requesting
 SYNC mode and confirming the selected device, add cancellable pairing,
 connection, and independent HID-readiness checks. Do not access or persist link
 keys.

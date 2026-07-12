@@ -73,7 +73,11 @@ must not be presented as endpoint verification.
 ## Bluetooth session
 
 The Bluetooth session begins with read-only adapter and device inventory. The
-user must confirm the sanitized candidate before pairing. The application may
+`bluetooth-inventory` command uses Windows' Bluetooth selector and emits a
+short digest instead of a Bluetooth address or Windows device identifier. It
+does not pair, connect, inspect link keys, or send controller commands. The
+user must unplug USB, hold SYNC for at least one second, and confirm the
+sanitized candidate before pairing. The application may
 ask Windows to perform pairing but must not read, export, or persist link keys.
 Pairing success does not imply HID readiness or decoded input.
 
