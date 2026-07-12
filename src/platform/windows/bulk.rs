@@ -251,6 +251,26 @@ pub fn run_described_input_probe(
     )
 }
 
+/// Reapplies the reviewed feature-output enable after sensor warm-up.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error under the standard bounded probe contract.
+pub fn run_motion_enable_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_input_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        Duration::from_millis(250),
+        1,
+        &[ClassifiedCommand::EnableFeatureOutputChannels],
+    )
+}
+
 fn run_input_probe(
     vendor_id: u16,
     product_id: u16,

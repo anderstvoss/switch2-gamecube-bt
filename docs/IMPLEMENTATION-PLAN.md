@@ -140,6 +140,12 @@ packed-axis offsets are verified for this controller. Generic axis
 normalization remains provisional until read-only factory/user calibration is
 implemented. Motion verification is the next wired checkpoint.
 
+Motion is now verified across all three acceleration and all three
+angular-velocity axes. The feature-enable value `0x27` must be reapplied after
+sensor timestamp warm-up; doing so yielded responsive motion in all 4,096
+observed frames. Scale and bias remain provisional until read-only calibration
+is incorporated.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting

@@ -58,7 +58,7 @@ pub struct UsbInputObservation {
 }
 
 /// Sanitized aggregate of decoded BEE-021 wired input.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UsbDecodedInputObservation {
     /// Every button observed in the pressed state.
     pub buttons_seen: BTreeSet<Button>,
@@ -66,6 +66,12 @@ pub struct UsbDecodedInputObservation {
     pub axis_ranges: BTreeMap<Axis, (i16, i16)>,
     /// Number of valid state frames decoded.
     pub frames: usize,
+    /// Number of motion samples decoded.
+    pub motion_samples: usize,
+    /// Observed acceleration minimum and maximum for X, Y, and Z.
+    pub acceleration_ranges: Option<[(f32, f32); 3]>,
+    /// Observed angular-velocity minimum and maximum for X, Y, and Z.
+    pub angular_velocity_ranges: Option<[(f32, f32); 3]>,
 }
 
 /// Enumerates matching HID interfaces without opening a device handle.
@@ -205,6 +211,9 @@ pub fn observe_decoded_usb_input(
     let mut buttons_seen = BTreeSet::new();
     let mut axis_ranges = BTreeMap::<Axis, (i16, i16)>::new();
     let mut frames = 0;
+    let mut motion_samples = 0;
+    let mut acceleration_ranges = None;
+    let mut angular_velocity_ranges = None;
 
     while frames < limit && Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -223,6 +232,11 @@ pub fn observe_decoded_usb_input(
             range.0 = range.0.min(value);
             range.1 = range.1.max(value);
         }
+        for motion in frame.motion {
+            update_vector_ranges(&mut acceleration_ranges, motion.acceleration);
+            update_vector_ranges(&mut angular_velocity_ranges, motion.angular_velocity);
+            motion_samples += 1;
+        }
         report[..length].fill(0);
         frames += 1;
     }
@@ -231,7 +245,22 @@ pub fn observe_decoded_usb_input(
         buttons_seen,
         axis_ranges,
         frames,
+        motion_samples,
+        acceleration_ranges,
+        angular_velocity_ranges,
     })
+}
+
+fn update_vector_ranges(ranges: &mut Option<[(f32, f32); 3]>, values: [f32; 3]) {
+    let ranges = ranges.get_or_insert([
+        (values[0], values[0]),
+        (values[1], values[1]),
+        (values[2], values[2]),
+    ]);
+    for (range, value) in ranges.iter_mut().zip(values) {
+        range.0 = range.0.min(value);
+        range.1 = range.1.max(value);
+    }
 }
 
 fn record_report(buckets: &mut BTreeMap<(u8, usize), usize>, report: &[u8]) {

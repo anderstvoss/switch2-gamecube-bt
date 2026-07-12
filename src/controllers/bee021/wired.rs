@@ -1,6 +1,10 @@
 //! Evidence-backed BEE-021 wired report decoding.
 
-use crate::protocol::{Axis, Button, InputFrame};
+use crate::protocol::{Axis, Button, InputFrame, MotionSample};
+
+const STANDARD_GRAVITY: f32 = 9.806_65;
+const ACCELERATION_SCALE: f32 = STANDARD_GRAVITY * 8.0 / i16::MAX as f32;
+const PROVISIONAL_GYRO_SCALE: f32 = 34.8 / i16::MAX as f32;
 
 /// Wired state report identifier selected by SDL's initialization sequence.
 pub const WIRED_REPORT_ID: u8 = 0x05;
@@ -75,6 +79,21 @@ pub fn decode_wired_report(report: &[u8]) -> Result<InputFrame, WiredDecodeError
     frame
         .axes
         .insert(Axis::RightTrigger, normalize_8bit(report[62]));
+    let sensor_timestamp = u32::from_le_bytes([report[43], report[44], report[45], report[46]]);
+    if sensor_timestamp != 0 {
+        frame.motion.push(MotionSample {
+            acceleration: [
+                f32::from(read_i16(report, 49)) * ACCELERATION_SCALE,
+                f32::from(read_i16(report, 53)) * ACCELERATION_SCALE,
+                -f32::from(read_i16(report, 51)) * ACCELERATION_SCALE,
+            ],
+            angular_velocity: [
+                f32::from(read_i16(report, 55)) * PROVISIONAL_GYRO_SCALE,
+                f32::from(read_i16(report, 59)) * PROVISIONAL_GYRO_SCALE,
+                -f32::from(read_i16(report, 57)) * PROVISIONAL_GYRO_SCALE,
+            ],
+        });
+    }
     Ok(frame)
 }
 
@@ -100,6 +119,10 @@ fn normalize_12bit(value: u16) -> i16 {
 fn normalize_8bit(value: u8) -> i16 {
     i16::try_from(((i32::from(value) * 65_535 / 255) - 32_768).clamp(-32_767, 32_767))
         .expect("normalized value is clamped to i16")
+}
+
+fn read_i16(report: &[u8], offset: usize) -> i16 {
+    i16::from_le_bytes([report[offset], report[offset + 1]])
 }
 
 #[cfg(test)]
@@ -148,5 +171,26 @@ mod tests {
         }
         assert_eq!(frame.axes[&Axis::LeftX], 32_767);
         assert_eq!(frame.axes[&Axis::LeftTrigger], 32_767);
+    }
+
+    #[test]
+    fn decodes_motion_in_sdl_axis_order() {
+        let mut report = [0_u8; WIRED_REPORT_LENGTH];
+        report[0] = WIRED_REPORT_ID;
+        report[43] = 1;
+        report[49..51].copy_from_slice(&1_000_i16.to_le_bytes());
+        report[51..53].copy_from_slice(&(-2_000_i16).to_le_bytes());
+        report[53..55].copy_from_slice(&3_000_i16.to_le_bytes());
+        report[55..57].copy_from_slice(&4_000_i16.to_le_bytes());
+        report[57..59].copy_from_slice(&(-5_000_i16).to_le_bytes());
+        report[59..61].copy_from_slice(&6_000_i16.to_le_bytes());
+        let frame = decode_wired_report(&report).expect("valid motion report");
+        let motion = frame.motion[0];
+        assert!(motion.acceleration[0] > 0.0);
+        assert!(motion.acceleration[1] > motion.acceleration[0]);
+        assert!(motion.acceleration[2] > 0.0);
+        assert!(motion.angular_velocity[0] > 0.0);
+        assert!(motion.angular_velocity[1] > motion.angular_velocity[0]);
+        assert!(motion.angular_velocity[2] > 0.0);
     }
 }

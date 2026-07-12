@@ -143,6 +143,13 @@ pub enum Command {
         #[arg(long, default_value_t = 64, value_parser = parse_limit)]
         limit: usize,
     },
+    /// Reapply the reviewed motion feature enable after sensor warm-up.
+    #[cfg(windows)]
+    UsbMotionEnableProbe {
+        /// Confirm the reviewed feature-enable write.
+        #[arg(long)]
+        approve_reviewed_write: bool,
+    },
     /// Fingerprint the BEE-021 HID descriptor without exposing its bytes.
     #[cfg(windows)]
     UsbDescriptor,
@@ -182,7 +189,8 @@ pub fn run(args: Args) -> CliResult {
         Command::UsbInputProbe { .. }
         | Command::UsbReport5InputProbe { .. }
         | Command::UsbDescribedInputProbe { .. }
-        | Command::UsbSdlReferenceProbe { .. } => "windows_usb_reviewed_experiment",
+        | Command::UsbSdlReferenceProbe { .. }
+        | Command::UsbMotionEnableProbe { .. } => "windows_usb_reviewed_experiment",
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -296,6 +304,9 @@ enum Payload {
         buttons_seen: Vec<String>,
         axis_ranges: Vec<AxisRangeView>,
         frames: usize,
+        motion_samples: usize,
+        acceleration_ranges: Vec<MotionRangeView>,
+        angular_velocity_ranges: Vec<MotionRangeView>,
     },
 }
 
@@ -355,6 +366,14 @@ struct AxisRangeView {
     maximum: i16,
 }
 
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
+struct MotionRangeView {
+    axis: &'static str,
+    minimum: f32,
+    maximum: f32,
+}
+
 fn execute(
     service: &mut ControllerService<FakeBackend>,
     command: Command,
@@ -408,24 +427,7 @@ fn execute(
             privacy: "sanitized",
         }),
         #[cfg(windows)]
-        Command::UsbInventory => Ok(Payload::UsbInterfaces {
-            items: crate::platform::windows::enumerate_usb_hid(
-                NINTENDO_VENDOR_ID,
-                Some(BEE_021_USB_PRODUCT_ID),
-            )?
-            .into_iter()
-            .map(|interface| UsbInterfaceView {
-                vendor_id: format!("{:04x}", interface.vendor_id),
-                product_id: format!("{:04x}", interface.product_id),
-                usage_page: format!("{:04x}", interface.usage_page),
-                usage: format!("{:04x}", interface.usage),
-                interface_number: interface.interface_number,
-                product_label: interface.product_label,
-                manufacturer_label: interface.manufacturer_label,
-                bus_type: interface.bus_type,
-            })
-            .collect(),
-        }),
+        Command::UsbInventory => usb_inventory(),
         #[cfg(windows)]
         Command::UsbBulkInventory => usb_bulk_inventory(),
         #[cfg(windows)]
@@ -453,6 +455,10 @@ fn execute(
             limit,
         } => usb_sdl_reference_probe(approve_exact_sdl_sequence, seconds, limit),
         #[cfg(windows)]
+        Command::UsbMotionEnableProbe {
+            approve_reviewed_write,
+        } => usb_motion_enable_probe(approve_reviewed_write),
+        #[cfg(windows)]
         Command::UsbDescriptor => usb_descriptor(),
         #[cfg(windows)]
         Command::UsbObserve { seconds, limit } => usb_observe(seconds, limit),
@@ -474,6 +480,28 @@ fn usb_bulk_inventory() -> Result<Payload, UserSafeError> {
         output_endpoint: format!("{:02x}", layout.output_endpoint),
         input_max_packet_size: layout.input_max_packet_size,
         output_max_packet_size: layout.output_max_packet_size,
+    })
+}
+
+#[cfg(windows)]
+fn usb_inventory() -> Result<Payload, UserSafeError> {
+    Ok(Payload::UsbInterfaces {
+        items: crate::platform::windows::enumerate_usb_hid(
+            NINTENDO_VENDOR_ID,
+            Some(BEE_021_USB_PRODUCT_ID),
+        )?
+        .into_iter()
+        .map(|interface| UsbInterfaceView {
+            vendor_id: format!("{:04x}", interface.vendor_id),
+            product_id: format!("{:04x}", interface.product_id),
+            usage_page: format!("{:04x}", interface.usage_page),
+            usage: format!("{:04x}", interface.usage),
+            interface_number: interface.interface_number,
+            product_label: interface.product_label,
+            manufacturer_label: interface.manufacturer_label,
+            bus_type: interface.bus_type,
+        })
+        .collect(),
     })
 }
 
@@ -574,6 +602,22 @@ fn usb_sdl_reference_probe(
 }
 
 #[cfg(windows)]
+fn usb_motion_enable_probe(approved: bool) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the reviewed motion write requires --approve-reviewed-write",
+        ));
+    }
+    let observation = crate::platform::windows::run_motion_enable_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
 fn usb_probe_payload(
     observation: crate::platform::windows::MinimalInputProbeObservation,
 ) -> Payload {
@@ -634,7 +678,26 @@ fn usb_decoded_input(seconds: u64, limit: usize) -> Result<Payload, UserSafeErro
             })
             .collect(),
         frames: observation.frames,
+        motion_samples: observation.motion_samples,
+        acceleration_ranges: motion_range_views(observation.acceleration_ranges),
+        angular_velocity_ranges: motion_range_views(observation.angular_velocity_ranges),
     })
+}
+
+#[cfg(windows)]
+fn motion_range_views(ranges: Option<[(f32, f32); 3]>) -> Vec<MotionRangeView> {
+    let Some(ranges) = ranges else {
+        return Vec::new();
+    };
+    ["x", "y", "z"]
+        .into_iter()
+        .zip(ranges)
+        .map(|(axis, (minimum, maximum))| MotionRangeView {
+            axis,
+            minimum,
+            maximum,
+        })
+        .collect()
 }
 
 fn parse_id(value: String) -> Result<ControllerId, UserSafeError> {
@@ -758,24 +821,7 @@ fn render_human(payload: Payload) -> String {
             }
         }
         #[cfg(windows)]
-        Payload::UsbInterfaces { items } => {
-            for item in items {
-                let label = item
-                    .product_label
-                    .as_deref()
-                    .unwrap_or("unlabeled HID interface");
-                let _ = writeln!(
-                    output,
-                    "{label}: {:04}:{:04} usage={}:{} interface={} bus={}",
-                    item.vendor_id,
-                    item.product_id,
-                    item.usage_page,
-                    item.usage,
-                    item.interface_number,
-                    item.bus_type
-                );
-            }
-        }
+        Payload::UsbInterfaces { items } => render_usb_interfaces(&mut output, items),
         #[cfg(windows)]
         Payload::UsbBulkInterface {
             interface_number,
@@ -783,12 +829,14 @@ fn render_human(payload: Payload) -> String {
             output_endpoint,
             input_max_packet_size,
             output_max_packet_size,
-        } => {
-            let _ = writeln!(
-                output,
-                "interface {interface_number}: bulk-in=0x{input_endpoint} ({input_max_packet_size} bytes) bulk-out=0x{output_endpoint} ({output_max_packet_size} bytes)"
-            );
-        }
+        } => render_usb_bulk_interface(
+            &mut output,
+            interface_number,
+            &input_endpoint,
+            &output_endpoint,
+            input_max_packet_size,
+            output_max_packet_size,
+        ),
         #[cfg(windows)]
         Payload::UsbDescriptor { length, sha256 } => {
             render_usb_descriptor(&mut output, length, &sha256);
@@ -805,9 +853,55 @@ fn render_human(payload: Payload) -> String {
             buttons_seen,
             axis_ranges,
             frames,
-        } => render_usb_decoded_input(&mut output, &buttons_seen, axis_ranges, frames),
+            motion_samples,
+            acceleration_ranges,
+            angular_velocity_ranges,
+        } => render_usb_decoded_input(
+            &mut output,
+            &buttons_seen,
+            axis_ranges,
+            frames,
+            motion_samples,
+            acceleration_ranges,
+            angular_velocity_ranges,
+        ),
     }
     output
+}
+
+#[cfg(windows)]
+fn render_usb_interfaces(output: &mut String, items: Vec<UsbInterfaceView>) {
+    for item in items {
+        let label = item
+            .product_label
+            .as_deref()
+            .unwrap_or("unlabeled HID interface");
+        let _ = writeln!(
+            output,
+            "{label}: {:04}:{:04} usage={}:{} interface={} bus={}",
+            item.vendor_id,
+            item.product_id,
+            item.usage_page,
+            item.usage,
+            item.interface_number,
+            item.bus_type
+        );
+    }
+}
+
+#[cfg(windows)]
+fn render_usb_bulk_interface(
+    output: &mut String,
+    interface_number: u8,
+    input_endpoint: &str,
+    output_endpoint: &str,
+    input_max_packet_size: usize,
+    output_max_packet_size: usize,
+) {
+    let _ = writeln!(
+        output,
+        "interface {interface_number}: bulk-in=0x{input_endpoint} ({input_max_packet_size} bytes) bulk-out=0x{output_endpoint} ({output_max_packet_size} bytes)"
+    );
 }
 
 #[cfg(windows)]
@@ -850,6 +944,9 @@ fn render_usb_decoded_input(
     buttons_seen: &[String],
     axis_ranges: Vec<AxisRangeView>,
     frames: usize,
+    motion_samples: usize,
+    acceleration_ranges: Vec<MotionRangeView>,
+    angular_velocity_ranges: Vec<MotionRangeView>,
 ) {
     let _ = writeln!(output, "frames: {frames}");
     let _ = writeln!(output, "buttons seen: {}", buttons_seen.join(", "));
@@ -857,6 +954,20 @@ fn render_usb_decoded_input(
         let _ = writeln!(
             output,
             "{}: {}..{}",
+            range.axis, range.minimum, range.maximum
+        );
+    }
+    let _ = writeln!(output, "motion samples: {motion_samples}");
+    render_motion_ranges(output, "acceleration", acceleration_ranges);
+    render_motion_ranges(output, "angular velocity", angular_velocity_ranges);
+}
+
+#[cfg(windows)]
+fn render_motion_ranges(output: &mut String, label: &str, ranges: Vec<MotionRangeView>) {
+    for range in ranges {
+        let _ = writeln!(
+            output,
+            "{label} {}: {:.3}..{:.3}",
             range.axis, range.minimum, range.maximum
         );
     }
