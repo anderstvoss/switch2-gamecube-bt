@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::domain::{ErrorCategory, UserSafeError};
 use crate::{
-    controllers::bee021::wired::decode_wired_report,
+    controllers::bee021::calibration::Bee021Calibration,
     protocol::{Axis, Button},
 };
 
@@ -204,6 +204,46 @@ pub fn observe_decoded_usb_input(
     duration: Duration,
     limit: usize,
 ) -> Result<UsbDecodedInputObservation, UserSafeError> {
+    observe_decoded_usb_input_with_calibration(vendor_id, product_id, duration, limit, None)
+}
+
+/// Reads calibration into memory and observes decoded BEE-021 input with it.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error if calibration retrieval or HID observation
+/// fails. Calibration values do not cross this API boundary.
+pub fn observe_calibrated_usb_input(
+    vendor_id: u16,
+    product_id: u16,
+    duration: Duration,
+    limit: usize,
+) -> Result<UsbDecodedInputObservation, UserSafeError> {
+    let (calibration, _) = super::bulk::read_calibration_data(vendor_id, product_id, 1)?;
+    super::bulk::run_sdl_reference_input_probe(
+        vendor_id,
+        product_id,
+        1,
+        Duration::from_millis(500),
+        1,
+    )?;
+    super::bulk::run_motion_enable_probe(vendor_id, product_id, 1)?;
+    observe_decoded_usb_input_with_calibration(
+        vendor_id,
+        product_id,
+        duration,
+        limit,
+        Some(&calibration),
+    )
+}
+
+fn observe_decoded_usb_input_with_calibration(
+    vendor_id: u16,
+    product_id: u16,
+    duration: Duration,
+    limit: usize,
+    calibration: Option<&Bee021Calibration>,
+) -> Result<UsbDecodedInputObservation, UserSafeError> {
     let api = HidApi::new().map_err(|_| platform_error("Windows HID initialization failed"))?;
     let device = open_unique_usb_device(&api, vendor_id, product_id)?;
     let deadline = Instant::now() + duration;
@@ -224,8 +264,11 @@ pub fn observe_decoded_usb_input(
         if length == 0 {
             continue;
         }
-        let frame = decode_wired_report(&report[..length])
-            .map_err(|_| invalid_data("USB HID report did not match the verified wired format"))?;
+        let frame = crate::controllers::bee021::wired::decode_wired_report_with_calibration(
+            &report[..length],
+            calibration,
+        )
+        .map_err(|_| invalid_data("USB HID report did not match the verified wired format"))?;
         buttons_seen.extend(frame.buttons);
         for (axis, value) in frame.axes {
             let range = axis_ranges.entry(axis).or_insert((value, value));

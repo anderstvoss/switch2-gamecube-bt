@@ -10,6 +10,7 @@ use nusb::{
 };
 
 use crate::{
+    controllers::bee021::calibration::{Bee021Calibration, CalibrationStatus, parse_calibration},
     controllers::bee021::usb_protocol::{
         BulkTransport, ClassifiedCommand, TransportError, sdl_reference_packets,
     },
@@ -17,6 +18,9 @@ use crate::{
 };
 
 const MAX_TRANSFER_LENGTH: usize = 64;
+const FLASH_REPLY_TRANSFER_LENGTH: usize = 128;
+const FLASH_REPLY_DATA_OFFSET: usize = 16;
+const FLASH_REPLY_DATA_LENGTH: usize = 64;
 const ENDPOINT_DIRECTION_MASK: u8 = 0x80;
 
 /// Sanitized layout of a USB interface's bulk endpoints.
@@ -50,6 +54,15 @@ pub struct MinimalInputProbeObservation {
     pub command_reply_lengths: Vec<usize>,
     /// Bounded report metadata observed after the reply.
     pub reports: Vec<BulkReportObservation>,
+}
+
+/// Sanitized result of documented read-only calibration retrieval.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CalibrationObservation {
+    /// Number of documented calibration blocks successfully read and parsed.
+    pub blocks_read: u8,
+    /// Sanitized calibration parse status.
+    pub status: CalibrationStatus,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,6 +103,30 @@ impl WinUsbBulkTransport {
             report_id,
             length: completed.len(),
         }))
+    }
+
+    fn read_flash_block(
+        &mut self,
+        address: u32,
+    ) -> Result<[u8; FLASH_REPLY_DATA_LENGTH], TransportError> {
+        let mut command = [0_u8; 16];
+        command[..12].copy_from_slice(&[
+            0x02, 0x91, 0x00, 0x01, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ]);
+        command[12..].copy_from_slice(&address.to_le_bytes());
+        self.send(&command)?;
+        let completed = self
+            .input
+            .transfer_blocking(Buffer::new(FLASH_REPLY_TRANSFER_LENGTH), self.timeout)
+            .into_result()
+            .map_err(map_transfer_error)?;
+        let end = FLASH_REPLY_DATA_OFFSET + FLASH_REPLY_DATA_LENGTH;
+        if completed.len() < end || completed.len() > FLASH_REPLY_TRANSFER_LENGTH {
+            return Err(TransportError::TransferFailed);
+        }
+        let mut block = [0_u8; FLASH_REPLY_DATA_LENGTH];
+        block.copy_from_slice(&completed[FLASH_REPLY_DATA_OFFSET..end]);
+        Ok(block)
     }
 }
 
@@ -269,6 +306,67 @@ pub fn run_motion_enable_probe(
         1,
         &[ClassifiedCommand::EnableFeatureOutputChannels],
     )
+}
+
+/// Retrieves and parses SDL-documented BEE-021 calibration blocks read-only.
+///
+/// The controller's serial-number block is intentionally not requested. Raw
+/// calibration blocks remain local to this function and are discarded after
+/// parsing; only [`CalibrationObservation`] crosses the boundary.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error for transport or malformed calibration data.
+pub fn read_calibration(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+) -> Result<CalibrationObservation, UserSafeError> {
+    let (_, status) = read_calibration_data(vendor_id, product_id, interface_number)?;
+    Ok(CalibrationObservation {
+        blocks_read: 7,
+        status,
+    })
+}
+
+pub(super) fn read_calibration_data(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+) -> Result<(Bee021Calibration, CalibrationStatus), UserSafeError> {
+    let layout = inspect_bulk_endpoints(vendor_id, product_id, interface_number)?;
+    let mut transport = open_bulk_transport(vendor_id, product_id, layout, Duration::from_secs(1))?;
+    let gyro = transport
+        .read_flash_block(0x13040)
+        .map_err(transport_error)?;
+    let left_stick = transport
+        .read_flash_block(0x13080)
+        .map_err(transport_error)?;
+    let right_stick = transport
+        .read_flash_block(0x130c0)
+        .map_err(transport_error)?;
+    let acceleration = transport
+        .read_flash_block(0x13100)
+        .map_err(transport_error)?;
+    let triggers = transport
+        .read_flash_block(0x13140)
+        .map_err(transport_error)?;
+    let left_user = transport
+        .read_flash_block(0x001f_c040)
+        .map_err(transport_error)?;
+    let right_user = transport
+        .read_flash_block(0x001f_c080)
+        .map_err(transport_error)?;
+    parse_calibration(
+        &gyro,
+        &left_stick,
+        &right_stick,
+        &acceleration,
+        &triggers,
+        &left_user,
+        &right_user,
+    )
+    .map_err(|_| invalid_data("read-only calibration data was malformed"))
 }
 
 fn run_input_probe(
