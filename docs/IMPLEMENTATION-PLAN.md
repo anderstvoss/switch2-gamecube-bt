@@ -181,6 +181,12 @@ persisted endpoint enumeration. A future, separately approved hardware test
 will use it to distinguish WinRT watcher behavior from the Windows Bluetooth
 stack's active discovery capability.
 
+That comparison has now run with a prebuilt, continuous eight-second
+`PairTool` scan and still produced no Bluetooth Classic endpoint while the user
+pressed SYNC. The result is evidence against the earlier watcher-only theory,
+but it is not proof of a controller or Windows defect. The next discovery
+comparison must use the Windows Bluetooth picker before pairing is considered.
+
 After requesting
 SYNC mode and confirming the selected device, add cancellable pairing,
 connection, and independent HID-readiness checks. Do not access or persist link

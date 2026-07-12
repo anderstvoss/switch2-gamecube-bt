@@ -17,6 +17,13 @@ association-endpoint watcher, which is the endpoint kind Windows uses for
 managed pairing. Neither attempt paired, connected to, or sent a command to the
 controller.
 
+A later prebuilt eight-second `PairTool` active-discovery run also returned no
+Bluetooth Classic endpoint while the user pressed SYNC immediately after the
+scan began. The first `PairTool` attempt is discarded because compilation
+delayed the scan start; the prebuilt continuous attempt is the valid result.
+This narrows the gap to BEE-021 discoverability versus the Windows Bluetooth
+stack. It does not establish a controller defect or a Windows defect.
+
 ## Timing and confidence
 
 The user observed that the controller's SYNC mode lasts approximately eight to

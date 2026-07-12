@@ -15,7 +15,9 @@ pub use bulk::{
     run_described_input_probe, run_minimal_input_probe, run_motion_enable_probe,
     run_report5_input_probe, run_sdl_reference_input_probe,
 };
-pub use pairtool::{PairToolStatus, inspect_pairtool};
+pub use pairtool::{
+    PairToolDiscoveryObservation, PairToolStatus, discover_with_pairtool, inspect_pairtool,
+};
 pub use usb::{
     UsbDecodedInputObservation, UsbDescriptorObservation, UsbHidInterface, UsbInputObservation,
     enumerate_usb_hid, inspect_usb_descriptor, observe_calibrated_usb_input,
