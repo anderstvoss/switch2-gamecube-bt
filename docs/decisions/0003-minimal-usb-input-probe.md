@@ -97,3 +97,15 @@ commands before report-format and start-stream. These are the remaining two
 described, non-rumble commands in the modeled SDL sequence. They remain
 candidate-volatile; unknown, rumble, grip, flash, firmware, reset, pairing, and
 calibration-write commands remain excluded.
+
+The four-command experiment was run after another USB reconnect. All commands
+were acknowledged with reply lengths 12, 12, 8, and 12 bytes, but no input
+reports arrived. See
+`observations/2026-07-11-windows-usb-described-probe.md`.
+
+This exhausts the described non-rumble candidates. Do not escalate the custom
+initializer to SDL's remaining unknown, rumble-related, or grip commands.
+Instead, validate wired behavior through official current SDL3 and treat its
+driver as the maintained wired reference. Project-owned USB work remains a
+controlled evidence and fixture path for Bluetooth decoding and the Windows
+service, not a replacement for SDL3's application-facing wired support.

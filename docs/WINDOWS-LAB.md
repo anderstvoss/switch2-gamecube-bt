@@ -48,6 +48,12 @@ run the experiment until the user explicitly approves that checkpoint. A
 failure must stop the experiment; it does not authorize automatically sending
 the rest of SDL's sequence.
 
+After the reviewed one-, two-, and four-command probes failed to produce input,
+custom packet escalation stopped. Use official current SDL3 for the working
+wired baseline and normalized capability comparison. Do not translate SDL's
+remaining unknown, rumble-related, or grip commands into project allowlisted
+packets merely because the complete upstream driver uses them.
+
 ## Bluetooth session
 
 The Bluetooth session begins with read-only adapter and device inventory. The

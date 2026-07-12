@@ -108,6 +108,14 @@ commands. This exhausts the four described non-rumble initialization
 candidates; failure will trigger a new evidence review rather than automatic
 use of SDL's unknown or output-related steps.
 
+The four described commands were acknowledged with reply lengths 12, 12, 8,
+and 12 bytes, but still produced no input. Custom initialization stops here:
+the remaining SDL steps are unknown, rumble-related, or grip-specific. The next
+wired baseline will use official current SDL3 directly, since SDL3 already
+provides maintained Switch 2 USB support. Project-owned USB transport remains
+useful for bounded protocol evidence, fixtures, and the future background
+service; it is not intended to replace SDL3 for ordinary wired applications.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting
