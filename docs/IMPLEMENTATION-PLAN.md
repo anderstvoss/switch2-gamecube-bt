@@ -156,46 +156,42 @@ the process boundary. The calibrated decoder centers values near zero; full
 stick endpoint verification remains outstanding because physical travel was not
 captured in the latest run.
 
-### Goal 4: Native Windows Bluetooth
+### Goal 4: Native Windows Bluetooth Low Energy
 
-Read-only Windows Bluetooth inventory is now implemented. It uses the Windows
-Bluetooth device selector, reports only display names and short per-host
-identifier digests, and does not pair, connect, or access link keys. Hardware
-discovery remains pending until the controller is intentionally moved to
-Bluetooth mode.
+The BEE-021 wireless path is now treated as Bluetooth Low Energy (BLE), not
+standard Bluetooth Classic HID. Public Switch 2 reverse-engineering work
+describes a proprietary BLE `0x91` GATT protocol, and a Linux project reports
+NSO GameCube support through a BLE bridge. These are external leads, not yet
+project-verified protocol facts.
 
-The first two bounded SYNC-mode scans returned no association endpoint. The
-scanner now uses the documented Bluetooth Classic association-endpoint
-protocol, not the known-device selector, and is limited to ten seconds because
-the observed controller pairing window is approximately eight to ten seconds.
-This is not yet evidence that the controller is undiscoverable: Windows may
-require another discovery surface. Nintendo documents the SYNC gesture but not
-its timeout, so whether the timeout is controller firmware policy or a hardware
-constraint remains explicitly unverified.
+Implement read-only Windows BLE advertisement discovery first. Retain only
+sanitized names, short rotating-identifier digests, and evidence-backed service
+matches; do not persist Bluetooth addresses or link keys. Then establish a BLE
+GATT client connection and independently verify service discovery, session
+initialization, input notifications, and disconnect behavior.
 
-The host also has Microsoft's inbox `pairtool.exe` and its Bluetooth Classic
-protocol available. The project exposes this only as a sanitized lab-status
-check; it does not make the runtime driver depend on PairTool. Microsoft
-documents PairTool's endpoint mode as active discovery, unlike ordinary
-persisted endpoint enumeration. A future, separately approved hardware test
-will use it to distinguish WinRT watcher behavior from the Windows Bluetooth
-stack's active discovery capability.
+Windows reports that the current adapter supports BLE and the central role, but
+the unpackaged diagnostic received no advertisements. Microsoft documents the
+BLE advertisement API's `bluetooth` package capability. Add a thin, Windows-only
+MSIX capability host before treating an empty scan as controller evidence; keep
+the Rust scanner and protocol model package-agnostic. Generating a test
+certificate, installing an MSIX package, or changing Windows developer policy
+remains a separate user-approved checkpoint.
 
-That comparison has now run with a prebuilt, continuous eight-second
-`PairTool` scan and still produced no Bluetooth Classic endpoint while the user
-pressed SYNC. The result is evidence against the earlier watcher-only theory,
-but it is not proof of a controller or Windows defect. The next discovery
-comparison must use the Windows Bluetooth picker before pairing is considered.
+The previous known-device, association-endpoint, and active PairTool scans are
+preserved as negative Bluetooth Classic evidence only. They do not test BLE and
+must not be interpreted as a controller or Windows hardware failure. The
+observed SYNC window remains approximately eight to ten seconds; its cause is
+unverified.
 
-After requesting
-SYNC mode and confirming the selected device, add cancellable pairing,
-connection, and independent HID-readiness checks. Do not access or persist link
-keys.
+After requesting SYNC mode and confirming a sanitized BLE candidate, add a
+cancellable GATT connection and independent service, notification, and input
+readiness checks. Do not access or persist link keys.
 
-Exit gate: Windows reports discovery, pairing, connection, and HID readiness as
-separate evidence-backed states.
+Exit gate: Windows reports BLE discovery, GATT connection, service readiness,
+notification readiness, and decoded input as separate evidence-backed states.
 
-### Goal 5: Bluetooth decoding and safe outputs
+### Goal 5: BLE decoding and safe outputs
 
 Compare Bluetooth reports with the USB baseline. Add only verified session
 initialization and decoding. Test each physical control, motion, battery,
