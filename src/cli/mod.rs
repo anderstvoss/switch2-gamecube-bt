@@ -102,6 +102,16 @@ pub enum Command {
     /// Check the Windows active-discovery lab diagnostic without scanning.
     #[cfg(windows)]
     BluetoothLabStatus,
+    /// Run a bounded `PairTool` Bluetooth Classic discovery experiment.
+    #[cfg(windows)]
+    BluetoothPairtoolScan {
+        /// Confirm that this active radio-discovery experiment may run.
+        #[arg(long)]
+        approve_active_discovery: bool,
+        /// Bounded scan duration in seconds.
+        #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+    },
     /// Inspect BEE-021 `WinUSB` bulk endpoints without claiming the interface.
     #[cfg(windows)]
     UsbBulkInventory,
@@ -333,6 +343,11 @@ enum Payload {
         classic_bluetooth_available: bool,
     },
     #[cfg(windows)]
+    BluetoothPairtoolScan {
+        seconds: u64,
+        endpoint_digests: Vec<String>,
+    },
+    #[cfg(windows)]
     UsbBulkInterface {
         interface_number: u8,
         input_endpoint: String,
@@ -445,6 +460,7 @@ struct MotionRangeView {
     maximum: f32,
 }
 
+#[allow(clippy::too_many_lines)]
 fn execute(
     service: &mut ControllerService<FakeBackend>,
     command: Command,
@@ -505,6 +521,11 @@ fn execute(
         Command::BluetoothScan { seconds } => bluetooth_scan(seconds),
         #[cfg(windows)]
         Command::BluetoothLabStatus => bluetooth_lab_status(),
+        #[cfg(windows)]
+        Command::BluetoothPairtoolScan {
+            approve_active_discovery,
+            seconds,
+        } => bluetooth_pairtool_scan(approve_active_discovery, seconds),
         #[cfg(windows)]
         Command::UsbBulkInventory => usb_bulk_inventory(),
         #[cfg(windows)]
@@ -630,6 +651,21 @@ fn bluetooth_lab_status() -> Result<Payload, UserSafeError> {
     Ok(Payload::BluetoothLabStatus {
         pairtool_available: status.available,
         classic_bluetooth_available: status.classic_bluetooth_available,
+    })
+}
+
+#[cfg(windows)]
+fn bluetooth_pairtool_scan(approved: bool, seconds: u64) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "active Bluetooth discovery requires --approve-active-discovery",
+        ));
+    }
+    let discovery = crate::platform::windows::discover_with_pairtool(Duration::from_secs(seconds))?;
+    Ok(Payload::BluetoothPairtoolScan {
+        seconds: discovery.duration.as_secs(),
+        endpoint_digests: discovery.endpoint_digests,
     })
 }
 
@@ -1045,6 +1081,11 @@ fn render_human(payload: Payload) -> String {
             classic_bluetooth_available,
         ),
         #[cfg(windows)]
+        Payload::BluetoothPairtoolScan {
+            seconds,
+            endpoint_digests,
+        } => render_bluetooth_pairtool_scan(&mut output, seconds, endpoint_digests),
+        #[cfg(windows)]
         Payload::UsbBulkInterface {
             interface_number,
             input_endpoint,
@@ -1189,6 +1230,18 @@ fn render_bluetooth_lab_status(
         output,
         "pairtool available: {pairtool_available} classic_bluetooth_available: {classic_bluetooth_available}"
     );
+}
+
+#[cfg(windows)]
+fn render_bluetooth_pairtool_scan(
+    output: &mut String,
+    seconds: u64,
+    endpoint_digests: Vec<String>,
+) {
+    let _ = writeln!(output, "pairtool active scan: {seconds} seconds");
+    for endpoint_digest in endpoint_digests {
+        let _ = writeln!(output, "discovered endpoint: {endpoint_digest}");
+    }
 }
 
 #[cfg(windows)]
