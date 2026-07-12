@@ -15,6 +15,9 @@ controllers can be added without changing the Windows-facing workflow.
   captures, logs, generated drivers, credentials, or local machine paths.
 - Land small commits only after the relevant deterministic checks pass.
 - Pause for user confirmation at every hardware checkpoint below.
+- Continue autonomously through implementation, documentation, tests, and
+  non-controller experiments. Pause only when a physical controller action is
+  required, state that action plainly, and resume when the user confirms it.
 
 ## Ordered goals
 
@@ -160,6 +163,15 @@ Bluetooth device selector, reports only display names and short per-host
 identifier digests, and does not pair, connect, or access link keys. Hardware
 discovery remains pending until the controller is intentionally moved to
 Bluetooth mode.
+
+The first two bounded SYNC-mode scans returned no association endpoint. The
+scanner now uses the documented Bluetooth Classic association-endpoint
+protocol, not the known-device selector, and is limited to ten seconds because
+the observed controller pairing window is approximately eight to ten seconds.
+This is not yet evidence that the controller is undiscoverable: Windows may
+require another discovery surface. Nintendo documents the SYNC gesture but not
+its timeout, so whether the timeout is controller firmware policy or a hardware
+constraint remains explicitly unverified.
 
 After requesting
 SYNC mode and confirming the selected device, add cancellable pairing,

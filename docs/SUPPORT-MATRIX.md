@@ -34,7 +34,7 @@ earlier one.
 | Windows 11 | Native host | USB | project WinUSB + HID | BEE-021 | decoded buttons, sticks, and triggers | input verified | observed once | `observations/2026-07-11-windows-usb-decoded-input.md` | 2026-07-11 | All 16 modeled buttons and all six axes observed across 4,096 frames; calibration pending. |
 | Windows 11 | Native host | USB | project WinUSB + HID | BEE-021 | six-axis motion | input verified | observed once | `observations/2026-07-11-windows-usb-motion.md` | 2026-07-11 | All six motion axes responsive after post-warm-up feature enable; calibration pending. |
 | Windows 11 | Native host | USB | project WinUSB + HID | BEE-021 | read-only calibration | input verified | observed once | `observations/2026-07-12-windows-usb-calibration.md` | 2026-07-12 | Seven blocks parsed; factory valid; no user overrides; serial block skipped. |
-| Windows 11 | Native host | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |
+| Windows 11 | Native host | Bluetooth | native Windows Bluetooth | BEE-021 | bounded SYNC-mode discovery | unverified | observed twice | `observations/2026-07-12-windows-bluetooth-discovery.md` | 2026-07-12 | Adapter was available; known-device and first association-endpoint scans returned no candidate. No pairing attempted. |
 | WSL2 | `<distribution>` | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |
 | Linux | Native host | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |
 
