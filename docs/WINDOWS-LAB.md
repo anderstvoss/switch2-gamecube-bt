@@ -54,6 +54,12 @@ wired baseline and normalized capability comparison. Do not translate SDL's
 remaining unknown, rumble-related, or grip commands into project allowlisted
 packets merely because the complete upstream driver uses them.
 
+SDL wired support also depends on build configuration. The official generic
+SDL 3.4.12 Windows x64 runtime tested in this lab used passive `If_Hid` even
+when the official libusb DLL was available. A working SDL comparison requires
+an SDL binary built with libusb HIDAPI support; merely placing libusb beside a
+binary built without `HAVE_LIBUSB` is insufficient.
+
 ## Bluetooth session
 
 The Bluetooth session begins with read-only adapter and device inventory. The

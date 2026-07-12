@@ -29,6 +29,7 @@ earlier one.
 | Windows 11 | Native host | USB | n/a | BEE-021 | one-packet start-stream probe | connected | observed once | `observations/2026-07-11-windows-usb-start-stream-probe.md` | 2026-07-11 | 12-byte command reply; no input reports in ten seconds. |
 | Windows 11 | Native host | USB | n/a | BEE-021 | report-format plus start-stream probe | connected | observed once | `observations/2026-07-11-windows-usb-report5-probe.md` | 2026-07-11 | 8- and 12-byte replies; no input reports in ten seconds. |
 | Windows 11 | Native host | USB | n/a | BEE-021 | four described-command probe | connected | observed once | `observations/2026-07-11-windows-usb-described-probe.md` | 2026-07-11 | Replies were 12, 12, 8, and 12 bytes; no input reports. |
+| Windows 11 | Native host | USB | official SDL 3.4.12 x64 | BEE-021 | wired SDL baseline | discovered | repeated | `observations/2026-07-11-sdl3-windows-runtime-baseline.md` | 2026-07-11 | Generic runtime fell back to `If_Hid`; no state changes, including with libusb DLL present. |
 | Windows 11 | Native host | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |
 | WSL2 | `<distribution>` | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |
 | Linux | Native host | Bluetooth | `<adapter label>` | BEE-021 | discovery | unverified | unverified | `<lab note>` | `<YYYY-MM-DD>` | |

@@ -116,6 +116,16 @@ provides maintained Switch 2 USB support. Project-owned USB transport remains
 useful for bounded protocol evidence, fixtures, and the future background
 service; it is not intended to replace SDL3 for ordinary wired applications.
 
+Official SDL 3.4.12 source contains the wired bulk driver, but the official
+generic Windows x64 runtime tested here enumerated only passive `If_Hid` input.
+Adding the official libusb DLL did not change that because SDL's libusb HIDAPI
+path must be compiled with `SDL_HIDAPI_LIBUSB`/`HAVE_LIBUSB`; it cannot be added
+to an existing DLL at runtime. A custom SDL build and the project's WinUSB
+transport would execute the same audited protocol. The next controlled baseline
+therefore uses the exact pinned SDL sequence through WinUSB as an isolated
+upstream-reference experiment, without promoting its unknown or output-related
+packets into the normal allowlist.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting
