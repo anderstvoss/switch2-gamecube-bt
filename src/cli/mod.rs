@@ -89,6 +89,9 @@ pub enum Command {
     /// Enumerate BEE-021 USB HID metadata without opening the device.
     #[cfg(windows)]
     UsbInventory,
+    /// Enumerate Windows Bluetooth devices without pairing or connecting.
+    #[cfg(windows)]
+    BluetoothInventory,
     /// Inspect BEE-021 `WinUSB` bulk endpoints without claiming the interface.
     #[cfg(windows)]
     UsbBulkInventory,
@@ -305,6 +308,11 @@ enum Payload {
         items: Vec<UsbInterfaceView>,
     },
     #[cfg(windows)]
+    BluetoothInventory {
+        adapter_present: bool,
+        devices: Vec<BluetoothDeviceView>,
+    },
+    #[cfg(windows)]
     UsbBulkInterface {
         interface_number: u8,
         input_endpoint: String,
@@ -386,6 +394,15 @@ struct UsbInterfaceView {
 
 #[cfg(windows)]
 #[derive(Debug, Serialize)]
+struct BluetoothDeviceView {
+    id_digest: String,
+    name: Option<String>,
+    paired: bool,
+    enabled: bool,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
 struct UsbInputMetadataView {
     report_id: String,
     length: usize,
@@ -462,6 +479,8 @@ fn execute(
         }),
         #[cfg(windows)]
         Command::UsbInventory => usb_inventory(),
+        #[cfg(windows)]
+        Command::BluetoothInventory => bluetooth_inventory(),
         #[cfg(windows)]
         Command::UsbBulkInventory => usb_bulk_inventory(),
         #[cfg(windows)]
@@ -542,6 +561,24 @@ fn usb_inventory() -> Result<Payload, UserSafeError> {
             bus_type: interface.bus_type,
         })
         .collect(),
+    })
+}
+
+#[cfg(windows)]
+fn bluetooth_inventory() -> Result<Payload, UserSafeError> {
+    let inventory = crate::platform::windows::enumerate_bluetooth()?;
+    Ok(Payload::BluetoothInventory {
+        adapter_present: inventory.adapter_present,
+        devices: inventory
+            .devices
+            .into_iter()
+            .map(|device| BluetoothDeviceView {
+                id_digest: device.id_digest,
+                name: device.name,
+                paired: device.paired,
+                enabled: device.enabled,
+            })
+            .collect(),
     })
 }
 
@@ -885,6 +922,7 @@ fn render_success(json: bool, backend: &'static str, payload: Payload) -> String
     render_human(payload)
 }
 
+#[allow(clippy::too_many_lines)]
 fn render_human(payload: Payload) -> String {
     let mut output = String::new();
     match payload {
@@ -937,6 +975,11 @@ fn render_human(payload: Payload) -> String {
         }
         #[cfg(windows)]
         Payload::UsbInterfaces { items } => render_usb_interfaces(&mut output, items),
+        #[cfg(windows)]
+        Payload::BluetoothInventory {
+            adapter_present,
+            devices,
+        } => render_bluetooth_inventory(&mut output, adapter_present, devices),
         #[cfg(windows)]
         Payload::UsbBulkInterface {
             interface_number,
@@ -1038,6 +1081,23 @@ fn render_usb_interfaces(output: &mut String, items: Vec<UsbInterfaceView>) {
             item.usage,
             item.interface_number,
             item.bus_type
+        );
+    }
+}
+
+#[cfg(windows)]
+fn render_bluetooth_inventory(
+    output: &mut String,
+    adapter_present: bool,
+    devices: Vec<BluetoothDeviceView>,
+) {
+    let _ = writeln!(output, "bluetooth adapter present: {adapter_present}");
+    for device in devices {
+        let name = device.name.as_deref().unwrap_or("unnamed device");
+        let _ = writeln!(
+            output,
+            "{name}: id={} paired={} enabled={}",
+            device.id_digest, device.paired, device.enabled
         );
     }
 }
