@@ -98,6 +98,21 @@ described, non-rumble commands in the modeled SDL sequence. They remain
 candidate-volatile; unknown, rumble, grip, flash, firmware, reset, pairing, and
 calibration-write commands remain excluded.
 
+## Transport correction and successful baseline
+
+The exact pinned ten-packet SDL sequence was later run as an isolated reference
+experiment. Every packet received a bounded reply. No subsequent packets
+appeared on bulk IN, but source review showed that SDL reads state through the
+HID interface after using bulk only for command replies. A same-session HID
+observation immediately received continuous 64-byte report ID `0x05` input.
+See `observations/2026-07-11-windows-usb-sdl-sequence.md`.
+
+The earlier one-, two-, and four-command observations remain accurate about
+bulk replies, but their lack of post-command bulk reports did not test the
+actual state channel. They must not be used to conclude those subsets cannot
+enable HID input. Future subset experiments, if needed, must observe interface
+0 HID after releasing interface 1.
+
 The four-command experiment was run after another USB reconnect. All commands
 were acknowledged with reply lengths 12, 12, 8, and 12 bytes, but no input
 reports arrived. See

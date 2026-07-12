@@ -60,6 +60,11 @@ when the official libusb DLL was available. A working SDL comparison requires
 an SDL binary built with libusb HIDAPI support; merely placing libusb beside a
 binary built without `HAVE_LIBUSB` is insufficient.
 
+The controller's wired path is split across two interfaces. Use WinUSB
+interface 1 for bounded initialization commands and replies, then release it.
+Read continuous report ID `0x05` state from HID interface 0. Do not wait for
+state reports on bulk IN; that endpoint carries command replies in SDL's model.
+
 ## Bluetooth session
 
 The Bluetooth session begins with read-only adapter and device inventory. The

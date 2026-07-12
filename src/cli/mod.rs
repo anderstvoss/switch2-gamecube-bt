@@ -14,6 +14,7 @@ use crate::{
 
 const JSON_SCHEMA_VERSION: u16 = 1;
 const MAX_LIMIT: usize = 256;
+const MAX_FRAME_LIMIT: usize = 8_192;
 #[cfg(windows)]
 const NINTENDO_VENDOR_ID: u16 = 0x057e;
 #[cfg(windows)]
@@ -155,6 +156,16 @@ pub enum Command {
         #[arg(long, default_value_t = 256, value_parser = parse_limit)]
         limit: usize,
     },
+    /// Exercise decoded BEE-021 wired input without retaining raw reports.
+    #[cfg(windows)]
+    UsbDecodedInputTest {
+        /// Bounded input exercise duration in seconds.
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u64).range(1..=60))]
+        seconds: u64,
+        /// Maximum number of frames to decode.
+        #[arg(long, default_value_t = 4_096, value_parser = parse_frame_limit)]
+        limit: usize,
+    },
 }
 
 /// Runs the CLI against the deterministic backend.
@@ -165,7 +176,8 @@ pub fn run(args: Args) -> CliResult {
         Command::UsbInventory
         | Command::UsbBulkInventory
         | Command::UsbDescriptor
-        | Command::UsbObserve { .. } => "windows_usb_read_only",
+        | Command::UsbObserve { .. }
+        | Command::UsbDecodedInputTest { .. } => "windows_usb_read_only",
         #[cfg(windows)]
         Command::UsbInputProbe { .. }
         | Command::UsbReport5InputProbe { .. }
@@ -204,6 +216,19 @@ fn parse_limit(value: &str) -> Result<usize, String> {
         Ok(limit)
     } else {
         Err(format!("limit must be between 1 and {MAX_LIMIT}"))
+    }
+}
+
+fn parse_frame_limit(value: &str) -> Result<usize, String> {
+    let limit = value
+        .parse::<usize>()
+        .map_err(|_| "frame limit must be an integer".to_owned())?;
+    if (1..=MAX_FRAME_LIMIT).contains(&limit) {
+        Ok(limit)
+    } else {
+        Err(format!(
+            "frame limit must be between 1 and {MAX_FRAME_LIMIT}"
+        ))
     }
 }
 
@@ -266,6 +291,12 @@ enum Payload {
         command_reply_lengths: Vec<usize>,
         reports: Vec<UsbInputMetadataView>,
     },
+    #[cfg(windows)]
+    UsbDecodedInput {
+        buttons_seen: Vec<String>,
+        axis_ranges: Vec<AxisRangeView>,
+        frames: usize,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -314,6 +345,14 @@ struct UsbInputMetadataView {
     report_id: String,
     length: usize,
     count: usize,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Serialize)]
+struct AxisRangeView {
+    axis: String,
+    minimum: i16,
+    maximum: i16,
 }
 
 fn execute(
@@ -417,6 +456,8 @@ fn execute(
         Command::UsbDescriptor => usb_descriptor(),
         #[cfg(windows)]
         Command::UsbObserve { seconds, limit } => usb_observe(seconds, limit),
+        #[cfg(windows)]
+        Command::UsbDecodedInputTest { seconds, limit } => usb_decoded_input(seconds, limit),
     }
 }
 
@@ -566,6 +607,33 @@ fn usb_observe(seconds: u64, limit: usize) -> Result<Payload, UserSafeError> {
             count: observation.count,
         })
         .collect(),
+    })
+}
+
+#[cfg(windows)]
+fn usb_decoded_input(seconds: u64, limit: usize) -> Result<Payload, UserSafeError> {
+    let observation = crate::platform::windows::observe_decoded_usb_input(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(Payload::UsbDecodedInput {
+        buttons_seen: observation
+            .buttons_seen
+            .into_iter()
+            .map(|button| format!("{button:?}"))
+            .collect(),
+        axis_ranges: observation
+            .axis_ranges
+            .into_iter()
+            .map(|(axis, (minimum, maximum))| AxisRangeView {
+                axis: format!("{axis:?}"),
+                minimum,
+                maximum,
+            })
+            .collect(),
+        frames: observation.frames,
     })
 }
 
@@ -732,6 +800,12 @@ fn render_human(payload: Payload) -> String {
             command_reply_lengths,
             reports,
         } => render_usb_input_probe(&mut output, command_reply_lengths, reports),
+        #[cfg(windows)]
+        Payload::UsbDecodedInput {
+            buttons_seen,
+            axis_ranges,
+            frames,
+        } => render_usb_decoded_input(&mut output, &buttons_seen, axis_ranges, frames),
     }
     output
 }
@@ -766,6 +840,24 @@ fn render_usb_input_probe(
             output,
             "report 0x{}: {} bytes",
             report.report_id, report.length
+        );
+    }
+}
+
+#[cfg(windows)]
+fn render_usb_decoded_input(
+    output: &mut String,
+    buttons_seen: &[String],
+    axis_ranges: Vec<AxisRangeView>,
+    frames: usize,
+) {
+    let _ = writeln!(output, "frames: {frames}");
+    let _ = writeln!(output, "buttons seen: {}", buttons_seen.join(", "));
+    for range in axis_ranges {
+        let _ = writeln!(
+            output,
+            "{}: {}..{}",
+            range.axis, range.minimum, range.maximum
         );
     }
 }

@@ -126,6 +126,20 @@ therefore uses the exact pinned SDL sequence through WinUSB as an isolated
 upstream-reference experiment, without promoting its unknown or output-related
 packets into the normal allowlist.
 
+The exact SDL sequence produced all ten bounded replies. SDL source then
+clarified the split transport: interface 1 bulk endpoints carry initialization
+and replies, while interface 0 HID carries state. A same-session HID check
+received continuous 64-byte report ID `0x05` input. Wired HID readiness is now
+verified. The next work is deterministic BEE-021 decoding from SDL's documented
+layout followed by a sanitized physical input matrix; no raw reports will be
+committed.
+
+The first decoded physical matrix processed 4,096 valid frames and observed all
+16 modeled buttons plus both sticks and both analog triggers. SDL's button and
+packed-axis offsets are verified for this controller. Generic axis
+normalization remains provisional until read-only factory/user calibration is
+implemented. Motion verification is the next wired checkpoint.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting
