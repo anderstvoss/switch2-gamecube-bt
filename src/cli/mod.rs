@@ -18,6 +18,8 @@ const MAX_LIMIT: usize = 256;
 const NINTENDO_VENDOR_ID: u16 = 0x057e;
 #[cfg(windows)]
 const BEE_021_USB_PRODUCT_ID: u16 = 0x2073;
+#[cfg(windows)]
+const BEE_021_BULK_INTERFACE: u8 = 1;
 
 /// Command-line arguments for `s2bt`.
 #[derive(Debug, Parser)]
@@ -85,6 +87,9 @@ pub enum Command {
     /// Enumerate BEE-021 USB HID metadata without opening the device.
     #[cfg(windows)]
     UsbInventory,
+    /// Inspect BEE-021 `WinUSB` bulk endpoints without claiming the interface.
+    #[cfg(windows)]
+    UsbBulkInventory,
     /// Fingerprint the BEE-021 HID descriptor without exposing its bytes.
     #[cfg(windows)]
     UsbDescriptor,
@@ -105,9 +110,10 @@ pub enum Command {
 pub fn run(args: Args) -> CliResult {
     let backend_name = match args.command {
         #[cfg(windows)]
-        Command::UsbInventory | Command::UsbDescriptor | Command::UsbObserve { .. } => {
-            "windows_usb_read_only"
-        }
+        Command::UsbInventory
+        | Command::UsbBulkInventory
+        | Command::UsbDescriptor
+        | Command::UsbObserve { .. } => "windows_usb_read_only",
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -180,6 +186,14 @@ enum Payload {
     #[cfg(windows)]
     UsbInterfaces {
         items: Vec<UsbInterfaceView>,
+    },
+    #[cfg(windows)]
+    UsbBulkInterface {
+        interface_number: u8,
+        input_endpoint: String,
+        output_endpoint: String,
+        input_max_packet_size: usize,
+        output_max_packet_size: usize,
     },
     #[cfg(windows)]
     UsbDescriptor {
@@ -312,6 +326,8 @@ fn execute(
             .collect(),
         }),
         #[cfg(windows)]
+        Command::UsbBulkInventory => usb_bulk_inventory(),
+        #[cfg(windows)]
         Command::UsbDescriptor => {
             let descriptor = crate::platform::windows::inspect_usb_descriptor(
                 NINTENDO_VENDOR_ID,
@@ -339,6 +355,22 @@ fn execute(
             .collect(),
         }),
     }
+}
+
+#[cfg(windows)]
+fn usb_bulk_inventory() -> Result<Payload, UserSafeError> {
+    let layout = crate::platform::windows::inspect_bulk_endpoints(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+    )?;
+    Ok(Payload::UsbBulkInterface {
+        interface_number: layout.interface_number,
+        input_endpoint: format!("{:02x}", layout.input_endpoint),
+        output_endpoint: format!("{:02x}", layout.output_endpoint),
+        input_max_packet_size: layout.input_max_packet_size,
+        output_max_packet_size: layout.output_max_packet_size,
+    })
 }
 
 fn parse_id(value: String) -> Result<ControllerId, UserSafeError> {
@@ -479,6 +511,19 @@ fn render_human(payload: Payload) -> String {
                     item.bus_type
                 );
             }
+        }
+        #[cfg(windows)]
+        Payload::UsbBulkInterface {
+            interface_number,
+            input_endpoint,
+            output_endpoint,
+            input_max_packet_size,
+            output_max_packet_size,
+        } => {
+            let _ = writeln!(
+                output,
+                "interface {interface_number}: bulk-in=0x{input_endpoint} ({input_max_packet_size} bytes) bulk-out=0x{output_endpoint} ({output_max_packet_size} bytes)"
+            );
         }
         #[cfg(windows)]
         Payload::UsbDescriptor { length, sha256 } => {
