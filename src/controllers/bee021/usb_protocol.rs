@@ -168,6 +168,32 @@ impl InitializationPlan {
         }
     }
 
+    /// Returns the four-command probe containing every described non-rumble
+    /// initialization candidate.
+    #[must_use]
+    pub fn candidate_described_input_probe() -> Self {
+        Self {
+            steps: Box::new([
+                InitializationStep::Command {
+                    command: ClassifiedCommand::SetFeatureOutputMask,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::EnableFeatureOutputChannels,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::SetInputReportFormat,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+                InitializationStep::Command {
+                    command: ClassifiedCommand::StartInputStream,
+                    safety_class: SafetyClass::CandidateVolatile,
+                },
+            ]),
+        }
+    }
+
     /// Returns the ordered plan items for diagnostics and review.
     #[must_use]
     pub fn steps(&self) -> &[InitializationStep] {
@@ -378,6 +404,23 @@ mod tests {
                 },
             ]
         );
+        let mut transport = MockTransport::default();
+        assert!(plan.execute(&mut transport).is_err());
+        assert!(transport.sent.is_empty());
+    }
+
+    #[test]
+    fn described_input_probe_excludes_unknown_rumble_and_grip_steps() {
+        let plan = InitializationPlan::candidate_described_input_probe();
+        assert_eq!(plan.steps().len(), 4);
+        assert!(plan.steps().iter().all(|step| matches!(
+            step,
+            InitializationStep::Command {
+                safety_class: SafetyClass::CandidateVolatile,
+                ..
+            }
+        )));
+        assert!(plan.blockers().is_empty());
         let mut transport = MockTransport::default();
         assert!(plan.execute(&mut transport).is_err());
         assert!(transport.sent.is_empty());

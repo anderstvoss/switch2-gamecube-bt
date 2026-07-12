@@ -116,6 +116,19 @@ pub enum Command {
         #[arg(long, default_value_t = 64, value_parser = parse_limit)]
         limit: usize,
     },
+    /// Run all four reviewed, described non-rumble input commands.
+    #[cfg(windows)]
+    UsbDescribedInputProbe {
+        /// Confirm all four reviewed host-to-controller writes.
+        #[arg(long)]
+        approve_reviewed_writes: bool,
+        /// Bounded input observation duration in seconds.
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=10))]
+        seconds: u64,
+        /// Maximum number of report metadata entries to retain.
+        #[arg(long, default_value_t = 64, value_parser = parse_limit)]
+        limit: usize,
+    },
     /// Fingerprint the BEE-021 HID descriptor without exposing its bytes.
     #[cfg(windows)]
     UsbDescriptor,
@@ -141,9 +154,9 @@ pub fn run(args: Args) -> CliResult {
         | Command::UsbDescriptor
         | Command::UsbObserve { .. } => "windows_usb_read_only",
         #[cfg(windows)]
-        Command::UsbInputProbe { .. } | Command::UsbReport5InputProbe { .. } => {
-            "windows_usb_reviewed_experiment"
-        }
+        Command::UsbInputProbe { .. }
+        | Command::UsbReport5InputProbe { .. }
+        | Command::UsbDescribedInputProbe { .. } => "windows_usb_reviewed_experiment",
         _ => "fake",
     };
     let mut service = ControllerService::new(FakeBackend::default())
@@ -375,16 +388,13 @@ fn execute(
             limit,
         } => usb_report5_input_probe(approve_reviewed_writes, seconds, limit),
         #[cfg(windows)]
-        Command::UsbDescriptor => {
-            let descriptor = crate::platform::windows::inspect_usb_descriptor(
-                NINTENDO_VENDOR_ID,
-                BEE_021_USB_PRODUCT_ID,
-            )?;
-            Ok(Payload::UsbDescriptor {
-                length: descriptor.length,
-                sha256: descriptor.sha256,
-            })
-        }
+        Command::UsbDescribedInputProbe {
+            approve_reviewed_writes,
+            seconds,
+            limit,
+        } => usb_described_input_probe(approve_reviewed_writes, seconds, limit),
+        #[cfg(windows)]
+        Command::UsbDescriptor => usb_descriptor(),
         #[cfg(windows)]
         Command::UsbObserve { seconds, limit } => usb_observe(seconds, limit),
     }
@@ -403,6 +413,18 @@ fn usb_bulk_inventory() -> Result<Payload, UserSafeError> {
         output_endpoint: format!("{:02x}", layout.output_endpoint),
         input_max_packet_size: layout.input_max_packet_size,
         output_max_packet_size: layout.output_max_packet_size,
+    })
+}
+
+#[cfg(windows)]
+fn usb_descriptor() -> Result<Payload, UserSafeError> {
+    let descriptor = crate::platform::windows::inspect_usb_descriptor(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+    )?;
+    Ok(Payload::UsbDescriptor {
+        length: descriptor.length,
+        sha256: descriptor.sha256,
     })
 }
 
@@ -437,6 +459,28 @@ fn usb_report5_input_probe(
         ));
     }
     let observation = crate::platform::windows::run_report5_input_probe(
+        NINTENDO_VENDOR_ID,
+        BEE_021_USB_PRODUCT_ID,
+        BEE_021_BULK_INTERFACE,
+        Duration::from_secs(seconds),
+        limit,
+    )?;
+    Ok(usb_probe_payload(observation))
+}
+
+#[cfg(windows)]
+fn usb_described_input_probe(
+    approved: bool,
+    seconds: u64,
+    limit: usize,
+) -> Result<Payload, UserSafeError> {
+    if !approved {
+        return Err(UserSafeError::new(
+            ErrorCategory::PermissionDenied,
+            "the four reviewed USB writes require --approve-reviewed-writes",
+        ));
+    }
+    let observation = crate::platform::windows::run_described_input_probe(
         NINTENDO_VENDOR_ID,
         BEE_021_USB_PRODUCT_ID,
         BEE_021_BULK_INTERFACE,

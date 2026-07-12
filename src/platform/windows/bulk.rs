@@ -221,6 +221,34 @@ pub fn run_report5_input_probe(
     )
 }
 
+/// Runs the approved four-command described, non-rumble input experiment.
+///
+/// # Errors
+///
+/// Returns a privacy-safe error under the same identity, endpoint, transfer,
+/// and observation bounds as [`run_minimal_input_probe`].
+pub fn run_described_input_probe(
+    vendor_id: u16,
+    product_id: u16,
+    interface_number: u8,
+    duration: Duration,
+    report_limit: usize,
+) -> Result<MinimalInputProbeObservation, UserSafeError> {
+    run_input_probe(
+        vendor_id,
+        product_id,
+        interface_number,
+        duration,
+        report_limit,
+        &[
+            ClassifiedCommand::SetFeatureOutputMask,
+            ClassifiedCommand::EnableFeatureOutputChannels,
+            ClassifiedCommand::SetInputReportFormat,
+            ClassifiedCommand::StartInputStream,
+        ],
+    )
+}
+
 fn run_input_probe(
     vendor_id: u16,
     product_id: u16,
