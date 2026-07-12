@@ -101,6 +101,13 @@ start streaming. It will stop without adding feature-output, unknown, rumble,
 grip, flash, firmware, reset, pairing, or calibration-write commands if input
 still does not appear.
 
+The fresh-session report-format plus start-stream probe received ordered 8- and
+12-byte replies but no input reports. The next bounded experiment adds the
+paired feature-output mask and enable commands ahead of those two accepted
+commands. This exhausts the four described non-rumble initialization
+candidates; failure will trigger a new evidence review rather than automatic
+use of SDL's unknown or output-related steps.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting

@@ -86,3 +86,14 @@ This validates the host transport and shows the one-packet candidate is
 insufficient. The next smallest historically supported probe is report-format
 `0x05` followed by start-stream on a freshly reconnected USB session. That
 experiment remains limited to those two packets and must stop on failure.
+
+The two-command experiment was then run on a freshly reconnected session.
+Report-format `0x05` returned an 8-byte reply and start-stream returned a
+12-byte reply, but no input reports arrived in ten seconds. See
+`observations/2026-07-11-windows-usb-report5-probe.md`.
+
+The next smallest reviewed probe adds the paired feature-output mask and enable
+commands before report-format and start-stream. These are the remaining two
+described, non-rumble commands in the modeled SDL sequence. They remain
+candidate-volatile; unknown, rumble, grip, flash, firmware, reset, pairing, and
+calibration-write commands remain excluded.
