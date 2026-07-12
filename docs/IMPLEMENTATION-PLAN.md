@@ -224,6 +224,10 @@ a project-owned, read-only serial bridge diagnostic first; obtaining or
 flashing bridge hardware and connecting BEE-021 remain user-approved hardware
 checkpoints.
 
+For native Linux work on separate hardware, use
+`docs/LINUX-AGENT-HANDOFF.md`. That handoff prioritizes direct BlueZ discovery
+over the bridge and preserves the same staged evidence and approval gates.
+
 The previous known-device, association-endpoint, and active PairTool scans are
 preserved as negative Bluetooth Classic evidence only. They do not test BLE and
 must not be interpreted as a controller or Windows hardware failure. The
