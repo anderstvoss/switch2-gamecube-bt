@@ -62,6 +62,11 @@ before the first live initialization attempt. Use recent Steam Input as a
 black-box wired behavior reference while treating SDL3's public libusb driver as
 the auditable implementation reference. See Decision 0001.
 
+The test-only initialization model now preflights the complete audited order.
+Four understood packets remain `candidate volatile`, and six unknown,
+rumble-related, or non-BEE-021 steps block all execution. No live transport or
+public executable-plan constructor exists. See Decision 0002.
+
 ### Goal 4: Native Windows Bluetooth
 
 Implement Windows adapter and device inventory before pairing. After requesting
