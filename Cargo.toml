@@ -21,7 +21,7 @@ serde_json = "1.0.140"
 hidapi = { version = "2.6.6", default-features = false, features = ["windows-native"] }
 nusb = "0.2.4"
 sha2 = "0.10.9"
-windows = { version = "0.61.3", features = ["Devices_Bluetooth", "Devices_Bluetooth_Advertisement", "Devices_Enumeration", "Foundation", "Foundation_Collections"] }
+windows = { version = "0.62.2", features = ["Devices_Bluetooth", "Devices_Bluetooth_Advertisement", "Devices_Enumeration", "Foundation", "Foundation_Collections"] }
 windows-collections = "0.2.0"
 
 [lib]
